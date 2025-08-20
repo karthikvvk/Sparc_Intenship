@@ -1,0 +1,12 @@
+flask
+mysql-connector-python
+pyngrok
+requests
+llama-cpp-python
+PyMuPDF
+python-docx
+beautifulsoup4
+python-pptx
+Pillow
+pytesseract
+openpyxl
