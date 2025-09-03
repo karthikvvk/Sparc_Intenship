@@ -1,13 +1,23 @@
-import os
+import os, subprocess
 import csv
 import json
 import mysql.connector
 from fpdf import FPDF
 
 
-def starter():
+# ---------- Check & install required packages ----------
+lis = ["mysql-connector-python", "fpdf"]
+os.system("pip list >> piplist.txt")
+piplis = open("piplist.txt").readlines()
+piplis = [i.split()[0].lower() for i in piplis[2:]]
+for i in lis:
+    if i not in piplis:
+        os.system("pip install -r requirements.txt ")
+        break
 
-    # DB connection config
+
+def starter():
+    # ---------- DB config ----------
     db_config = {
         'host': 'localhost',
         'user': 'jacksparrow',
@@ -15,7 +25,7 @@ def starter():
         'database': 'sparc'
     }
 
-
+    # ---------- Table definition ----------
     col_defs_str = """CREATE TABLE IF NOT EXISTS patient_details (
         id VARCHAR(255) PRIMARY KEY,
         patient_name VARCHAR(100),
@@ -47,7 +57,7 @@ def starter():
         relieving_factors TEXT,
         medical_history TEXT,
         movement_restriction VARCHAR(100),
-        advised_for_surgery VARCHAR(10),
+        advised_for_surgery VARCHAR(100),
         current_medication TEXT,
         past_surgery_or_accident TEXT,
         recent_travel_or_function TEXT,
@@ -96,30 +106,31 @@ def starter():
     );
     """
 
+    # ---------- PDF dirs ----------
+    pdf_dirs = ["/home/muruga/Documents/patient_his_pd", "./temppdfs"]
+    for d in pdf_dirs:
+        os.makedirs(d, exist_ok=True)
 
-
-    pdf_dir = "/home/muruga/Documents/patient_his_pd/"
-    # Paths
-    if not os.path.exists(pdf_dir):
-        os.mkdir(pdf_dir)
-
-    # PDF creation
+    # ---------- PDF Creation ----------
     def create_pdf_if_not_exists(pdf_name, row_dict):
-        pdf_path = os.path.join(pdf_dir, f"{pdf_name}.pdf")
-        if not os.path.exists(pdf_path):
-            pdf = FPDF()
-            pdf.add_page()
-            pdf.set_font("Arial", size=10)
-            json_str = json.dumps(row_dict, indent=4)
-            for line in json_str.splitlines():
-                pdf.multi_cell(0, 5, line)
-            pdf.output(pdf_path)
-            print(f"[+] Created PDF: {pdf_path}")
-        else:
-            print(f"[=] PDF already exists: {pdf_path}")
-        return os.path.basename(pdf_path)
+        pdf_paths = []
+        for d in pdf_dirs:
+            pdf_path = os.path.join(d, f"{pdf_name}.pdf")
+            if not os.path.exists(pdf_path):
+                pdf = FPDF()
+                pdf.add_page()
+                pdf.set_font("Arial", size=10)
+                json_str = json.dumps(row_dict, indent=4)
+                for line in json_str.splitlines():
+                    pdf.multi_cell(0, 5, line)
+                pdf.output(pdf_path)
+                print(f"[+] Created PDF: {pdf_path}")
+            else:
+                print(f"[=] PDF already exists: {pdf_path}")
+            pdf_paths.append(pdf_path)
+        return pdf_paths[0]  # return the first path for DB update
 
-    # Step 1: Connect to MySQL
+    # ---------- MySQL connection ----------
     conn = mysql.connector.connect(
         host=db_config['host'],
         user=db_config['user'],
@@ -127,54 +138,52 @@ def starter():
     )
     cursor = conn.cursor()
 
-    # Ensure DB exists
     cursor.execute(f"CREATE DATABASE IF NOT EXISTS {db_config['database']}")
     conn.database = db_config['database']
     cursor.execute(col_defs_str)
 
-
-    # Step 2: Read CSV headers
+    # ---------- Read CSV & Insert ----------
     csv_file = "patient_intake_mockdata.csv"
-    # fh = open(csv_file)
-    # raw = fh.readlines()
-    # n =  len(raw)
-    # fh.close()
     with open(csv_file, "r", encoding="utf-8", errors="replace") as file:
         reader = csv.reader(file)
-        headers = next(reader)   # get header row
+        headers = next(reader)
         col_len = len(headers)
 
         for row in reader:
-            val_n = len(row)
-            if val_n < col_len:
-                print("[-] Columns missing. Adding NULL instead")
-                row += ["null"] * (col_len - val_n)
-            elif val_n > col_len:
-                print("[-] Extra columns found. Trimming")
+            if len(row) < col_len:
+                print("[-] Missing columns → Adding NULLs")
+                row += ["null"] * (col_len - len(row))
+            elif len(row) > col_len:
+                print("[-] Extra columns → Trimming")
                 row = row[:col_len]
 
-            # Build query dynamically
-            placeholders = ", ".join(["%s"] * col_len)
-            columns = ", ".join(headers)
-            insert_query = f"INSERT INTO patient_details ({columns}) VALUES ({placeholders})"
-
-            # Normalize values (convert empty/null strings → None)
             row = [None if v is None or v.strip().lower() == "null" or v.strip() == "" else v for v in row]
 
+            placeholders = ", ".join(["%s"] * col_len)
+            columns = ", ".join(headers)
+            insert_query = f"""
+            INSERT INTO patient_details ({columns}) 
+            VALUES ({placeholders})
+            ON DUPLICATE KEY UPDATE updated_on = VALUES(updated_on)
+            """
+
             try:
-                # Insert row into DB
                 cursor.execute(insert_query, row)
                 conn.commit()
-                print(f"[+] Inserted row with id={row[0]}")
+                print(f"[+] Inserted/Updated row with id={row[0]}")
 
-                # Create PDF for this patient
+                # Create PDF & update DB
                 row_dict = dict(zip(headers, row))
-                pdf_filename = create_pdf_if_not_exists(row[0], row_dict)
+                pdf_path = create_pdf_if_not_exists(row[0], row_dict)
 
-                # Update DB with PDF filename
                 update_query = "UPDATE patient_details SET med_history_pdf = %s WHERE id = %s"
-                cursor.execute(update_query, (pdf_dir+pdf_filename, row[0]))
+                cursor.execute(update_query, (pdf_path, row[0]))
                 conn.commit()
 
             except mysql.connector.Error as e:
                 print(f"[!] Error inserting row {row[0]}: {e}")
+
+    print("[✓] Processing complete.")
+
+
+

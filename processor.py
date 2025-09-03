@@ -1,10 +1,10 @@
-# app/processor.py
 import requests
 from tempfile import NamedTemporaryFile
 from pathlib import Path
 import mimetypes
-#-----------------------------#------------------------------------------------------------------#
+
 def extract_text_from_url(file_url: str):
+    print(file_url)
     try:
         # ---------------------- Handle local file ---------------------- #
         if Path(file_url).exists():
@@ -32,22 +32,41 @@ def extract_text_from_url(file_url: str):
         else:
             return "⚠ Invalid file path or URL", None
 
-        # Lazy import heavy libs
+        # ---------------------- PDF Handling ---------------------- #
         if ext == "pdf":
-            import fitz
-            doc = fitz.open(str(tmp_path))
-            return "\n".join(page.get_text() for page in doc), ext
+            import fitz  # PyMuPDF
+            from PIL import Image
+            import pytesseract
+            import io
 
+            doc = fitz.open(str(tmp_path))
+            pdf_text = []
+            for page_num, page in enumerate(doc):
+                text = page.get_text()
+                if text.strip():
+                    pdf_text.append(text)
+                else:
+                    # Fallback to OCR if page is image-only
+                    pix = page.get_pixmap(dpi=300)
+                    img = Image.open(io.BytesIO(pix.tobytes("png")))
+                    ocr_text = pytesseract.image_to_string(img)
+                    if ocr_text.strip():
+                        pdf_text.append(ocr_text)
+            return ("\n".join(pdf_text) if pdf_text else "⚠ No readable text found in PDF."), ext
+
+        # ---------------------- DOCX Handling ---------------------- #
         if ext == "docx":
             import docx
             doc = docx.Document(str(tmp_path))
             return "\n".join(p.text for p in doc.paragraphs), ext
 
+        # ---------------------- EML Handling ---------------------- #
         if ext == "eml":
             from bs4 import BeautifulSoup
             html = tmp_path.read_text(errors="ignore")
             return BeautifulSoup(html, "html.parser").get_text("\n"), ext
 
+        # ---------------------- PPTX Handling ---------------------- #
         if ext == "pptx":
             from pptx import Presentation
             from PIL import Image
@@ -71,6 +90,7 @@ def extract_text_from_url(file_url: str):
                     slides.append("\n".join(slide_text))
             return ("\n".join(slides) if slides else "⚠ No readable text found in PPTX."), ext
 
+        # ---------------------- Image Handling ---------------------- #
         if ext in ("png", "jpg", "jpeg"):
             from PIL import Image
             import pytesseract
@@ -78,6 +98,7 @@ def extract_text_from_url(file_url: str):
             txt = pytesseract.image_to_string(img)
             return (txt if txt.strip() else "⚠ No readable text found in image."), ext
 
+        # ---------------------- Excel Handling ---------------------- #
         if ext in ("xlsx", "xls"):
             import openpyxl
             wb = openpyxl.load_workbook(str(tmp_path), data_only=True)
@@ -91,16 +112,3 @@ def extract_text_from_url(file_url: str):
 
     except Exception as e:
         return f"⚠ Error processing file: {e}", None
-
-#-----------------------------#------------------------------------------------------------------#
-#creating chunks
-def chunk_text(text: str, chunk_size: int = 400, overlap: int = 100):
-    words = text.split()
-    if not words:
-        return []
-    step = chunk_size - overlap
-    return [" ".join(words[i:i + chunk_size]) for i in range(0, len(words), step)]
-
-#-----------------------------#------------------------------------------------------------------#
-
-#print(extract_text_from_url("/home/muruga/Documents/patient_his_pd/Rajesh Kumar.pdf"))

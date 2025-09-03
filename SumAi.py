@@ -1,11 +1,23 @@
-import time
+import time, os
 from llama_cpp import Llama
 from processor import *
 
 
 
+lis = ["/home/muruga/.lmstudio/models/lmstudio-community/gpt-oss-20b-GGUF/gpt-oss-20b-MXFP4.gguf", "./gpt-oss-20b-MXFP4.gguf", "https://drive.google.com/file/d/17JRpjf_32DRLsOLzP9fWiiuIpl4drtH9/view?usp=sharing"]
+for i in lis:
+    if i.startswith("http"):
+        r = requests.head(i, allow_redirects=True, timeout=5)
+        if r.status_code == 200:
+            model = i
+            break
+    elif os.path.exists(i):
+        model = i
+        break
+    else:
+        Exception("Model not found. Place model in './gpt-oss-20b-MXFP4.gguf' current dir")
 
-model = "/home/muruga/.lmstudio/models/lmstudio-community/gpt-oss-20b-GGUF/gpt-oss-20b-MXFP4.gguf"
+
 model_name = model.split("/")[-1].split(".")[0]
 space = "\n\n\n\n\n\n"
 maxtokens=512
@@ -20,28 +32,22 @@ llm = Llama(
 
 
 
-def StartSummarize(path):
+def StartSummarize(path, idea=""):
     print(space, "\nmodel_name:", model_name, "\nmaxtokens:", maxtokens, "\ntopp:", topp, "\nrepeatpenalty:", repeatpenalty, "\ntemp:" , temp ,space)
-
-
     inp = extract_text_from_url(path)
 
+
     prompt = f"""
-    You are a medical summarizer specialized in clinical documentation.
-    Given the structured patient details below in JSON format, generate a single concise medical introduction paragraph. 
+    You are a medical summarizer specializing in clinical documentation. Using the structured patient details provided in JSON, write a single, concise medical introduction paragraph that:  
 
-    The summary must:
-    - Be strictly in one paragraph (no points or lists).
-    - Include demographics (name, age, gender, occupation, lifestyle).
-    - Mention chief complaints, duration, pain characteristics, associated symptoms.
-    - Integrate relevant medical history, current medications, past treatments, and investigation reports.
-    - Highlight aggravating/relieving factors, movement restrictions, sleep/ergonomic habits, and lifestyle contributors.
-    - Use correct medical terminology and keep tone professional, crisp, and factual.
-    - Avoid meta commentary, disclaimers, or repeating instructions.
+    - Integrates demographics (name, age, gender, occupation, lifestyle), chief complaints with duration and pain characteristics, associated symptoms, relevant medical history, current medications, past treatments, and investigation findings.  
+    - Includes aggravating/relieving factors, movement restrictions, sleep/ergonomic habits, and lifestyle contributors if present.  
+    - Maintains a professional, factual, and medically accurate tone without bullet points, meta commentary, or instructions.  
 
-    Patient Details:
-    {inp}
+    Patient Details: {inp}  
+    Doctor's Additional Thoughts: {idea if idea else "N/A"}  
     """
+
 
     print(space, prompt, space)
 
@@ -59,3 +65,5 @@ def StartSummarize(path):
     print(prt)
     print(space + "OUTPUT" + space)
     print(prt["choices"][0]["text"]+ space)
+    refined = (prt["choices"][0]["text"]+ space)
+    return refined
