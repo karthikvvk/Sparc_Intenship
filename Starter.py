@@ -3,6 +3,10 @@ import csv
 import json
 import mysql.connector
 from fpdf import FPDF
+from dotenv import load_dotenv
+
+# ---------- Load environment variables ----------
+load_dotenv(dotenv_path="./frontend/.env")
 
 
 # ---------- Check & install required packages ----------
@@ -19,11 +23,12 @@ for i in lis:
 def starter():
     # ---------- DB config ----------
     db_config = {
-        'host': 'localhost',
-        'user': 'jacksparrow',
-        'password': '1234',
-        'database': 'sparc'
+        'host': os.getenv("DB_HOST"),
+        'user': os.getenv("DB_USER"),
+        'password': os.getenv("DB_PASSWORD"),
+        'database': os.getenv("DB_NAME")
     }
+
 
     # ---------- Table definition ----------
     col_defs_str = """CREATE TABLE IF NOT EXISTS patient_details (
@@ -105,9 +110,10 @@ def starter():
         med_history_summary TEXT
     );
     """
+    pdf_dirs = [os.getenv("PDF_DIR1"), os.getenv("PDF_DIR2")]
 
     # ---------- PDF dirs ----------
-    pdf_dirs = ["/home/muruga/Documents/patient_his_pd", "./temppdfs"]
+    pdf_dirs = ["./patient_his_pd", "./temppdfs"]
     for d in pdf_dirs:
         os.makedirs(d, exist_ok=True)
 
@@ -143,7 +149,7 @@ def starter():
     cursor.execute(col_defs_str)
 
     # ---------- Read CSV & Insert ----------
-    csv_file = "patient_intake_mockdata.csv"
+    csv_file = os.getenv("CSV_FILE")
     with open(csv_file, "r", encoding="utf-8", errors="replace") as file:
         reader = csv.reader(file)
         headers = next(reader)

@@ -6,6 +6,10 @@ from flask_cors import CORS  # Import CORS
 import io, fitz, re
 from pyngrok import ngrok
 from pycloudflared import try_cloudflare
+from dotenv import load_dotenv, set_key
+
+# ---------- Load environment variables ----------
+load_dotenv(dotenv_path="./frontend/.env")
 
 
 
@@ -14,10 +18,10 @@ CORS(app)  # Enable CORS for all routes and origins
 
 # MySQL DB config
 db_config = {
-    'host': 'localhost',
-    'user': 'jacksparrow',         # change if needed
-    'password': '1234',         # change if needed
-    'database': 'sparc'
+    'host': os.getenv("DB_HOST"),
+    'user': os.getenv("DB_USER"),
+    'password': os.getenv("DB_PASSWORD"),
+    'database': os.getenv("DB_NAME")
 }
 active_clients = {}
 
@@ -301,6 +305,7 @@ def update_summary_in_db(conn, cursor, patient_id, new_text, method="replace"):
     return updated_summary
 
 if __name__ == "__main__":
-    # url = try_cloudflare(port=5000)
-    # print("Tunnel URL:", url)
+    url = try_cloudflare(port=5000)
+    print("Tunnel URL:", url)
+    set_key(".env", "URL", url[0])
     app.run(host="0.0.0.0", port=5000)
