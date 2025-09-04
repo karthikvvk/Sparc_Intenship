@@ -307,5 +307,5 @@ def update_summary_in_db(conn, cursor, patient_id, new_text, method="replace"):
 if __name__ == "__main__":
     url = try_cloudflare(port=5000)
     print("Tunnel URL:", url)
-    set_key(".env", "URL", url[0])
+    set_key("./frontend/.env", "URL", url[0])
     app.run(host="0.0.0.0", port=5000)
