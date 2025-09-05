@@ -1,13 +1,15 @@
+from Starter import *
+starter()
+
 from flask import Flask, jsonify, request
 import mysql.connector
 from SumAi import *
-from Starter import *
 from flask_cors import CORS  # Import CORS
 import io, fitz, re
 from pyngrok import ngrok
 from pycloudflared import try_cloudflare
 from dotenv import load_dotenv, set_key
-
+from Cleaner import *
 # ---------- Load environment variables ----------
 load_dotenv(dotenv_path="./frontend/.env")
 
@@ -16,6 +18,8 @@ load_dotenv(dotenv_path="./frontend/.env")
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes and origins
 
+default_pdf = os.getenv("PDF_DIR1")
+temp_pdf = os.getenv("PDF_DIR2")
 # MySQL DB config
 db_config = {
     'host': os.getenv("DB_HOST"),
@@ -76,7 +80,7 @@ def start_summarisation():
             if not pdf_file:
                 return jsonify({"error": "PDF file required"}), 400
 
-            pdf = f"/home/muruga/workspace/intern/summ/temppdfs/{pdf_file.filename}"
+            pdf = f"{temp_pdf}/{pdf_file.filename}"
             pdf_file.save(pdf)
 
             return handle_single_summarisation(patient_id, idea=idea, pdf=pdf)
@@ -196,38 +200,12 @@ def handle_bulk_summarisation():
         if conn:
             conn.close()
 
-def clean_summary_text(raw_text: str) -> str:
-    """
-    Cleans extracted text:
-    - Removes extra newlines, quotes, weird characters
-    - Removes AI meta markers like <|end|>, <|start|>, assistant, final, etc.
-    - Collapses multiple spaces into one
-    - Returns a single clean paragraph
-    """
-    if not raw_text:
-        return ""
-
-    # Remove control characters except basic punctuation
-    cleaned = re.sub(r'[^\x20-\x7E\n]', ' ', raw_text)
-
-    # Remove meta markers like <|...|> or tokens like assistant/final/message
-    cleaned = re.sub(r'<\|.*?\|>', ' ', cleaned)
-    cleaned = re.sub(r'\b(?:assistant|final|message|channel|start|end)\b', ' ', cleaned, flags=re.IGNORECASE)
-
-    # Replace multiple newlines with a single space
-    cleaned = re.sub(r'\s*\n\s*', ' ', cleaned)
-
-    # Remove quotes and extra spaces
-    cleaned = re.sub(r'["“”]', '', cleaned)
-    cleaned = re.sub(r'\s+', ' ', cleaned)
-
-    return cleaned.strip()
-
 def handle_single_summarisation(patient_id, idea="", pdf=""):
     if pdf != "":
-        # summary = StartSummarize(pdf, idea=idea)
-        # summary = clean_summary_text(summary)
-        summary = "this is summary"
+        summary = StartSummarize(pdf, idea=idea)
+        summary = clean_summary_text(summary)
+        #print(summary)
+        # summary = "this is summary"
         return jsonify({
             "summary": summary,
             "idea": idea
@@ -246,7 +224,7 @@ def handle_single_summarisation(patient_id, idea="", pdf=""):
         # summary = f"this is summary"
         summary = StartSummarize(pdf_path, idea)
         summary = clean_summary_text(summary)
-
+        #print(summary)
         
         return jsonify({
 
@@ -305,7 +283,10 @@ def update_summary_in_db(conn, cursor, patient_id, new_text, method="replace"):
     return updated_summary
 
 if __name__ == "__main__":
+    url = None
     url = try_cloudflare(port=5000)
     print("Tunnel URL:", url)
-    set_key("./frontend/.env", "URL", url[0])
+    if url==None:
+        url = ("http://127.0.0.1:5000",)
+    set_key("./frontend/.env", "VITE_API_URL", url[0])
     app.run(host="0.0.0.0", port=5000)

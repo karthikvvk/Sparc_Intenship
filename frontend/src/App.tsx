@@ -18,6 +18,9 @@ function App() {
   const [errors, setErrors] = useState<{ patientId?: string; pdfFile?: string }>({});
   const [showHistory, setShowHistory] = useState(false);
   const [selectedSummary, setSelectedSummary] = useState<SummaryData | null>(null);
+  const API_URL = import.meta.env.VITE_API_URL;
+  console.log("API URL:", API_URL);
+  const [isMerging, setIsMerging] = useState(false);
 
   // States to control button disabled/enabled status
   const [areButtonsEnabled, setAreButtonsEnabled] = useState(false);
@@ -59,7 +62,7 @@ function App() {
         const formData = new FormData();
         formData.append("pdf", pdfFile);
 
-        const response = await fetch("http://127.0.0.1:5000/start_summarisation", {
+        const response = await fetch(`${API_URL}/start_summarisation`, {
           method: "POST",
           body: formData,
         });
@@ -75,7 +78,7 @@ function App() {
         setSummaryData(cleanSummary);
         setSummaryHistory((prev) => [cleanSummary, ...prev]);
       } else {
-        const response = await fetch("http://127.0.0.1:5000/start_summarisation", {
+        const response = await fetch(`${API_URL}/start_summarisation`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ patientId, idea }),
@@ -106,38 +109,42 @@ function App() {
     }
   };
 
-  const handleMerge = async () => {
-    if (!validateForm() || !summaryData) return;
-    try {
-      const response = await fetch("http://127.0.0.1:5000/merge", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          patientId,
-          idea: idea && idea.trim() !== "" ? idea : summaryData.idea,
-          summary: summaryData.summary,
-        }),
-      });
+ const handleMerge = async () => {
+  if (!validateForm() || !summaryData) return;
+  setIsMerging(true); // Start loading animation
 
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "Merge failed");
+  try {
+    const response = await fetch(`${API_URL}/merge`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        patientId,
+        idea: idea && idea.trim() !== "" ? idea : summaryData.idea,
+        summary: summaryData.summary,
+      }),
+    });
 
-      const cleanSummary: SummaryData = {
-        summary: result.summary ?? summaryData.summary,
-        idea: result.idea ?? idea ?? summaryData.idea ?? null,
-      };
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "Merge failed");
 
-      setSummaryData(cleanSummary);
-      setSummaryHistory((prev) => [cleanSummary, ...prev]);
-    } catch (err) {
-      console.error("Merge error:", err);
-    }
-  };
+    const cleanSummary: SummaryData = {
+      summary: result.summary ?? summaryData.summary,
+      idea: result.idea ?? idea ?? summaryData.idea ?? null,
+    };
+
+    setSummaryData(cleanSummary);
+    setSummaryHistory((prev) => [cleanSummary, ...prev]);
+  } catch (err) {
+    console.error("Merge error:", err);
+  } finally {
+    setIsMerging(false); // Stop loading animation
+  }
+};
 
   const handleReplace = async () => {
     if (!validateForm() || !summaryData) return;
     try {
-      const response = await fetch("http://127.0.0.1:5000/replace", {
+      const response = await fetch(`${API_URL}/replace`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -165,7 +172,7 @@ function App() {
   const handleAddVersion = async () => {
     if (!validateForm() || !summaryData) return;
     try {
-      const response = await fetch("http://127.0.0.1:5000/add", {
+      const response = await fetch(`${API_URL}/add`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -327,11 +334,23 @@ function App() {
               </button>
               <button
                 onClick={handleMerge}
-                disabled={!areButtonsEnabled}
-                className={`px-6 py-3 rounded-lg font-medium transition ${!areButtonsEnabled ? 'bg-gray-400 cursor-not-allowed text-gray-200' : 'bg-green-600 text-white hover:bg-green-700'}`}
+                disabled={!areButtonsEnabled || isMerging}
+                className={`px-6 py-3 rounded-lg font-medium transition flex items-center justify-center space-x-2 ${
+                  !areButtonsEnabled || isMerging
+                    ? 'bg-gray-400 cursor-not-allowed text-gray-200'
+                    : 'bg-green-600 text-white hover:bg-green-700'
+                }`}
               >
-                Merge
+                {isMerging ? (
+                  <>
+                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
+                    <span>Merging...</span>
+                  </>
+                ) : (
+                  <span>Merge</span>
+                )}
               </button>
+
               <button
                 onClick={handleAddVersion}
                 disabled={!areButtonsEnabled}

@@ -7,10 +7,22 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Node modules & build output
 node_modules
 dist
 dist-ssr
 *.local
+
+# Python cache
+__pycache__/
+
+# Virtual environment
+./virtual
+
+# Temp & data folders
+./temppdfs/
+./patient_his_pdf/
+./patient_intake_mockdata.csv
 
 # Editor directories and files
 .vscode/*
@@ -22,4 +34,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Misc
 piplist.txt

@@ -1,69 +1,92 @@
-import time, os
+import time, os, requests
 from llama_cpp import Llama
 from processor import *
+from dotenv import load_dotenv
+from Cleaner import *
+# ---------- Load environment variables ----------
+load_dotenv(dotenv_path="./frontend/.env")
+aipath = os.getenv("AI_PATH")
 
+# ---------- Model paths ----------
+lis = [
+    "/medgemma-4b-it-GGUF/medgemma-4b-it-Q4_K_M.gguf",
+    "/gpt-oss-20b-GGUF/gpt-oss-20b-MXFP4.gguf",
+    "https://drive.google.com/file/d/17JRpjf_32DRLsOLzP9fWiiuIpl4drtH9/view?usp=sharing"
+]
 
-
-lis = ["/home/muruga/.lmstudio/models/lmstudio-community/gpt-oss-20b-GGUF/gpt-oss-20b-MXFP4.gguf", "./gpt-oss-20b-MXFP4.gguf", "https://drive.google.com/file/d/17JRpjf_32DRLsOLzP9fWiiuIpl4drtH9/view?usp=sharing"]
+# ---------- Select available model ----------
 for i in lis:
     if i.startswith("http"):
-        r = requests.head(i, allow_redirects=True, timeout=5)
-        if r.status_code == 200:
-            model = i
-            break
-    elif os.path.exists(i):
-        model = i
+        try:
+            r = requests.head(i, allow_redirects=True, timeout=5)
+            if r.status_code == 200:
+                model = i
+                break
+        except:
+            continue
+    elif os.path.exists(aipath + i):
+        model = aipath + i
         break
-    else:
-        Exception("Model not found. Place model in './gpt-oss-20b-MXFP4.gguf' current dir")
-
+else:
+    raise Exception("Model not found. Place the model file correctly.")
 
 model_name = model.split("/")[-1].split(".")[0]
-space = "\n\n\n\n\n\n"
-maxtokens=512
-temp=0.7
-topp=0.9
-repeatpenalty=1.1
 
+# ---------- Settings ----------
+space = "\n\n\n\n\n\n"
+maxtokens = 256        # Reduced for faster inference
+temp = 0.7
+topp = 0.9
+repeatpenalty = 1.1
+
+# ---------- Initialize Llama ----------
 llm = Llama(
     model_path=model,
-    n_ctx=2048
+    n_ctx=1024,                   # Reduced for speed
+    n_threads=os.cpu_count(),
+    n_batch=128
+
 )
 
 
+print(space, "\nmodel_name:", model_name, "\nmaxtokens:", maxtokens, "\ntopp:", topp,
+          "\nrepeatpenalty:", repeatpenalty, "\ntemp:", temp,model, space)
 
+
+
+# ---------- Summarize Function ----------
 def StartSummarize(path, idea=""):
-    print(space, "\nmodel_name:", model_name, "\nmaxtokens:", maxtokens, "\ntopp:", topp, "\nrepeatpenalty:", repeatpenalty, "\ntemp:" , temp ,space)
-    inp = extract_text_from_url(path)
+    print(space, "\nmodel_name:", model_name, "\nmaxtokens:", maxtokens, "\ntopp:", topp,
+          "\nrepeatpenalty:", repeatpenalty, "\ntemp:", temp, space)
 
+    raw_text, file_ext = extract_text_from_url(path)
+    inp = clean_summary_text(raw_text)
 
+    
     prompt = f"""
-    You are a medical summarizer specializing in clinical documentation. Using the structured patient details provided in JSON, write a single, concise medical introduction paragraph that:  
+write a neet summary about this patient.
+Patient Information:
+{inp}
 
-    - Integrates demographics (name, age, gender, occupation, lifestyle), chief complaints with duration and pain characteristics, associated symptoms, relevant medical history, current medications, past treatments, and investigation findings.  
-    - Includes aggravating/relieving factors, movement restrictions, sleep/ergonomic habits, and lifestyle contributors if present.  
-    - Maintains a professional, factual, and medically accurate tone without bullet points, meta commentary, or instructions.  
+Doctor's Notes: {idea if idea else "None"}
+"""
+    
 
-    Patient Details: {inp}  
-    Doctor's Additional Thoughts: {idea if idea else "N/A"}  
-    """
-
-
+    print(space, model, space)
     print(space, prompt, space)
 
-
     prt = llm(
-    prompt,
-    max_tokens=maxtokens,
-    temperature=temp,
-    top_p=topp,
-    repeat_penalty=repeatpenalty
+        prompt=prompt,
+        max_tokens=maxtokens,
+        temperature=temp,
+        top_p=topp,
+        repeat_penalty=repeatpenalty,
     )
-
 
     print(space + "RAW OUTPUT" + space)
     print(prt)
+
     print(space + "OUTPUT" + space)
-    print(prt["choices"][0]["text"]+ space)
-    refined = (prt["choices"][0]["text"]+ space)
-    return refined
+    output = prt["choices"][0]["text"].strip()
+    print(output + space)
+    return output

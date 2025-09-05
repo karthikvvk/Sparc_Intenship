@@ -17,6 +17,7 @@ piplis = [i.split()[0].lower() for i in piplis[2:]]
 for i in lis:
     if i not in piplis:
         os.system("pip install -r requirements.txt ")
+        # os.system("pip install --upgrade -r requirements.txt ") # in case of version issues use this upgrade command
         break
 
 
@@ -113,7 +114,7 @@ def starter():
     pdf_dirs = [os.getenv("PDF_DIR1"), os.getenv("PDF_DIR2")]
 
     # ---------- PDF dirs ----------
-    pdf_dirs = ["./patient_his_pd", "./temppdfs"]
+    pdf_dirs = ["./patient_his_pdf", "./temppdfs"]
     for d in pdf_dirs:
         os.makedirs(d, exist_ok=True)
 
