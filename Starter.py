@@ -1,27 +1,57 @@
-import os, subprocess
+import os
+import subprocess
+import sys
 import csv
 import json
-import mysql.connector
-from fpdf import FPDF
-from dotenv import load_dotenv
+#curl
+# ========== Function: Install/Update Pip & Packages ==========
+def ensure_pip_updated():
+    try:
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "pip"])
+        print("[✓] pip is up to date.")
+    except Exception as e:
+        print(f"[!] Failed to update pip: {e}")
 
-# ---------- Load environment variables ----------
-load_dotenv(dotenv_path="./frontend/.env")
+def install_packages(packages):
+    os.system("pip install -r requirements.txt")
+    for i in packages:
+        print(f"[?] Missing packages detected: {', '.join(missing)}")
+        choice = input("Do you want to install/upgrade them? (yes/no): ").strip().lower()
+        try:
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade"] + missing)
+            print("[✓] Required packages installed/updated.")
+        except Exception as e:
+            print(f"[!] Package installation failed: {e}")
 
+# ========== Function: Handle Model ==========
+def handle_model(mods):
+    for model_name,download_url  in list(mods.items()):
+        model_path = f"./models/{model_name}"
+        if not os.path.exists(model_path):
+            choice = input(f"[?] Model '{model_name}' not found. Download it? (yes/no): ").strip().lower()
+            if choice == "yes":
+                os.makedirs("./models", exist_ok=True)
+                print(f"[↓] Downloading {model_name} from {download_url} ...")
+                try:
+                    subprocess.check_call(["curl", "-L", download_url, "-o", model_path])
+                    print(f"[✓] Model downloaded to {model_path}")
+                except Exception as e:
+                    print(f"[!] Failed to download model: {e}")
+                    sys.exit(1)
+            else:
+                model_path = input("[?] Enter full path to the model: ").strip()
+                if not os.path.exists(model_path):
+                    print(f"[!] Model path '{model_path}' not found. Exiting.Try after Downloading model and placing in ./models/")
+                    sys.exit(1)
 
-# ---------- Check & install required packages ----------
-lis = ["mysql-connector-python", "fpdf"]
-os.system("pip list >> piplist.txt")
-piplis = open("piplist.txt").readlines()
-piplis = [i.split()[0].lower() for i in piplis[2:]]
-for i in lis:
-    if i not in piplis:
-        os.system("pip install -r requirements.txt ")
-        # os.system("pip install --upgrade -r requirements.txt ") # in case of version issues use this upgrade command
-        break
-
-
+# ========== Main Starter Function ==========
 def starter():
+    from dotenv import load_dotenv
+    load_dotenv(dotenv_path="./frontend/.env")
+
+    import mysql.connector
+    from fpdf import FPDF
+
     # ---------- DB config ----------
     db_config = {
         'host': os.getenv("DB_HOST"),
@@ -29,7 +59,6 @@ def starter():
         'password': os.getenv("DB_PASSWORD"),
         'database': os.getenv("DB_NAME")
     }
-
 
     # ---------- Table definition ----------
     col_defs_str = """CREATE TABLE IF NOT EXISTS patient_details (
@@ -109,9 +138,7 @@ def starter():
         chat_history LONGTEXT,
         med_history_pdf VARCHAR(255),
         med_history_summary TEXT
-    );
-    """
-    pdf_dirs = [os.getenv("PDF_DIR1"), os.getenv("PDF_DIR2")]
+    );"""
 
     # ---------- PDF dirs ----------
     pdf_dirs = ["./patient_his_pdf", "./temppdfs"]
@@ -144,7 +171,6 @@ def starter():
         password=db_config['password']
     )
     cursor = conn.cursor()
-
     cursor.execute(f"CREATE DATABASE IF NOT EXISTS {db_config['database']}")
     conn.database = db_config['database']
     cursor.execute(col_defs_str)
@@ -187,10 +213,19 @@ def starter():
                 cursor.execute(update_query, (pdf_path, row[0]))
                 conn.commit()
 
-            except mysql.connector.Error as e:
+            except Exception as e:
                 print(f"[!] Error inserting row {row[0]}: {e}")
 
-    print("[✓] Processing complete.")
+    print("[✓] Processing complete.\nNow run 'python Server.py' to start the server.")
 
+# ========== Execution ==========
+if __name__ == "__main__":
+    ensure_pip_updated()
 
+    os.system("pip list >> piplist.txt")
+    piplis = open("piplist.txt").readlines()
+    piplis = [i.split()[0].lower() for i in piplis[2:]]
+    install_packages(piplis)
 
+    model_path = handle_model({"gpt-oss-20b-MXFP4.gguf":"https://huggingface.co/lmstudio-community/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-MXFP4.gguf", "medgemma-4b-it-Q4_K_M.gguf":"https://huggingface.co/lmstudio-community/medgemma-4b-it-GGUF/resolve/main/medgemma-4b-it-Q4_K_M.gguf"})
+    starter()

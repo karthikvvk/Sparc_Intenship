@@ -22,7 +22,6 @@ __pycache__/
 # Temp & data folders
 ./temppdfs/
 ./patient_his_pdf/
-./patient_intake_mockdata.csv
 
 # Editor directories and files
 .vscode/*
