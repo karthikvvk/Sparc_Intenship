@@ -14,9 +14,8 @@ def ensure_pip_updated():
 
 def install_packages(packages):
     os.system("pip install -r requirements.txt")
-    for i in packages:
-        print(f"[?] Missing packages detected: {', '.join(missing)}")
-        choice = input("Do you want to install/upgrade them? (yes/no): ").strip().lower()
+    for missing in packages:
+        print(f"[?] Checking packages: {missing}")
         try:
             subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade"] + missing)
             print("[✓] Required packages installed/updated.")
