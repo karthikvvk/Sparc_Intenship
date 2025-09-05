@@ -1,6 +1,5 @@
 flask
 mysql-connector-python
-pyngrok
 requests
 llama-cpp-python
 PyMuPDF
@@ -12,3 +11,6 @@ pytesseract
 openpyxl
 fpdf
 python-dotenv
+flask_cors
+pycloudflared
+pyngrok
