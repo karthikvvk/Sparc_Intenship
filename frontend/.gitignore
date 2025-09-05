@@ -22,6 +22,7 @@ __pycache__/
 # Temp & data folders
 ./temppdfs/
 ./patient_his_pdf/
+./models/
 
 # Editor directories and files
 .vscode/*
