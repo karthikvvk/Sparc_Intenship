@@ -9,12 +9,14 @@ import os
 from pycloudflared import try_cloudflare
 from dotenv import load_dotenv, set_key
 from Cleaner import *
+from pyngrok import ngrok
+
 
 # ---------- Load environment variables ----------
 load_dotenv(dotenv_path="./frontend/.env")
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 
 default_pdf = os.getenv("PDF_DIR1")
 temp_pdf = os.getenv("PDF_DIR2")
@@ -265,6 +267,7 @@ def handle_single_summarisation(patient_id, idea="", pdf=""):
     if pdf:
         summary = StartSummarize(pdf, idea=idea)
         summary = clean_summary_text(summary)
+        # summary = "single two"
         return jsonify({"summary": summary, "idea": idea})
 
     conn = mysql.connector.connect(**db_config)
@@ -280,6 +283,7 @@ def handle_single_summarisation(patient_id, idea="", pdf=""):
     pdf_path = row[0]
     summary = StartSummarize(pdf_path, idea)
     summary = clean_summary_text(summary)
+    # summary = "single one"
     return jsonify({"summary": summary, "idea": idea})
 
 
@@ -298,6 +302,7 @@ def update_summary_in_db(conn, cursor, patient_id, new_text, method="replace"):
             all_versions.append(new_text)
             combined_text = " ".join(all_versions)
             updated_summary = StartSummarize(combined_text)
+            # updated_summary = "merged one"
         else:
             updated_summary = new_text
 
@@ -322,10 +327,18 @@ def update_summary_in_db(conn, cursor, patient_id, new_text, method="replace"):
 
 
 if __name__ == "__main__":
-    url = None
-    url = try_cloudflare(port=5000)
-    print("Tunnel URL:", url)
-    if url is None:
-        url = ("http://127.0.0.1:5000",)
-    set_key("./frontend/.env", "VITE_API_URL", url[0])
+    # Open ngrok tunnel
+    public_url = None
+    tunnel = ngrok.connect(5000)
+    public_url = tunnel.public_url
+    print("Tunnel URL:", public_url)
+
+    # Fallback if tunnel fails
+    if not public_url:
+        public_url = "http://127.0.0.1:5000"
+
+    # Save to .env
+    set_key("./frontend/.env", "VITE_API_URL", public_url)
+
+    # Run Flask
     app.run(host="0.0.0.0", port=5000)

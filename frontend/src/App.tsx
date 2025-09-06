@@ -41,24 +41,26 @@ function App() {
     }
   };
 
+const loadHistory = async (pid?: string) => {
+  const effectiveId = pid || historyPatientId || patientId;
+  if (!effectiveId.trim()) return;
 
-  const loadHistory = async () => {
-    if (!historyPatientId.trim()) return;
-    try {
-      const response = await fetch(`${API_URL}/load_history`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ patientId: historyPatientId }),
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "Failed to load history");
+  try {
+    const response = await fetch(`${API_URL}/load_history`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ patientId: effectiveId }),
+    });
 
-      // Assuming the backend returns an array of history items
-      setSummaryHistory(result.history || []);
-    } catch (err) {
-      console.error("Load history error:", err);
-    }
-  };
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "Failed to load history");
+
+    setSummaryHistory(result.history || []);
+  } catch (err) {
+    console.error("Load history error:", err);
+  }
+};
+
   // Effect to manage button states based on inputs
   useEffect(() => {
     if (patientId.trim() !== '' && !pdfFile) {
@@ -85,41 +87,56 @@ function App() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const updateSummary = async (method: "replace" | "merge" | "add") => {
-    if (!validateForm() || !summaryData) return;
+const updateSummary = async (method: "replace" | "merge" | "add") => {
+  if (!validateForm() || !summaryData) return;
 
-    try {
-      const response = await fetch(`${API_URL}/update_summary`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          patientId,
-          idea: idea && idea.trim() !== "" ? idea : summaryData.idea,
-          summary: summaryData.summary,
-          method,
-        }),
-      });
+  try {
+    const response = await fetch(`${API_URL}/update_summary`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        patientId,
+        idea: idea && idea.trim() !== "" ? idea : summaryData.idea,
+        summary: summaryData.summary,
+        method,
+      }),
+    });
 
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "Update failed");
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "Update failed");
 
-      const cleanSummary: SummaryData = {
-        summary: result.summary,
-        idea: result.idea ?? idea ?? summaryData.idea ?? null,
-      };
+    const cleanSummary: SummaryData = {
+      summary: result.summary,
+      idea: result.idea ?? idea ?? summaryData.idea ?? null,
+    };
 
+    if (method === "replace" || method === "merge") {
+      // Replace/Merge updates the current summary
       setSummaryData(cleanSummary);
-      setSummaryHistory((prev) => [cleanSummary, ...prev]);
-      await loadHistory();
-      if (method === "add") {
-        setCanAdd(false); // 🔒 disable add after use
-      }
-    } catch (err) {
-      console.error(`${method} error:`, err);
-    } finally {
-      if (method === "merge") setIsMerging(false);
     }
-  };
+
+    if (method === "add") {
+      setCanAdd(false); // disable add after first use
+    }
+
+    // ✅ Always reload history from backend (DB)
+    await loadHistory(patientId);
+
+    if (method === "replace") {
+      // disable all buttons after replace
+      setAreButtonsEnabled(false);
+      setCanAdd(false);
+      setIsReEnableDisabled(true);
+    }
+
+  } catch (err) {
+    console.error(`${method} error:`, err);
+  } finally {
+    if (method === "merge") setIsMerging(false);
+  }
+};
+
+
 
   const handleReplace = () => updateSummary("replace");
   const handleMerge = () => {
@@ -128,56 +145,51 @@ function App() {
   };
   const handleAddVersion = () => updateSummary("add");
 
-  const generateSummary = async () => {
-    if (!validateForm()) return;
-    setIsGenerating(true);
+const generateSummary = async () => {
+  if (!validateForm()) return;
+  setIsGenerating(true);
 
-    try {
-      if (pdfFile) {
-        const formData = new FormData();
-        formData.append("pdf", pdfFile);
+  try {
+    if (pdfFile) {
+      const formData = new FormData();
+      formData.append("pdf", pdfFile);
 
-        const response = await fetch(`${API_URL}/start_summarisation`, {
-          method: "POST",
-          body: formData,
-        });
+      const response = await fetch(`${API_URL}/start_summarisation`, {
+        method: "POST",
+        body: formData,
+      });
 
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || "Failed to extract PDF");
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Failed to extract PDF");
 
-        const cleanSummary: SummaryData = {
-          summary: result.summary,
-          idea: result.idea ?? null,
-        };
+      setSummaryData({
+        summary: result.summary,
+        idea: result.idea ?? null,
+      });
+      setCanAdd(true); // enable Add button
+    } else {
+      const response = await fetch(`${API_URL}/start_summarisation`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ patientId, idea }),
+      });
 
-        setSummaryData(cleanSummary);
-        setSummaryHistory((prev) => [cleanSummary, ...prev]);
-        setCanAdd(true);
-      } else {
-        const response = await fetch(`${API_URL}/start_summarisation`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ patientId, idea }),
-        });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Failed to generate summary");
 
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || "Failed to generate summary");
-
-        const cleanSummary: SummaryData = {
-          summary: result.summary,
-          idea: result.idea ?? (idea && idea.trim() !== "" ? idea : null),
-        };
-
-        setSummaryData(cleanSummary);
-        setSummaryHistory((prev) => [cleanSummary, ...prev]);
-        setCanAdd(true); 
-      }
-    } catch (err) {
-      console.error("Generate error:", err);
-    } finally {
-      setIsGenerating(false);
+      setSummaryData({
+        summary: result.summary,
+        idea: result.idea ?? (idea && idea.trim() !== "" ? idea : null),
+      });
+      setCanAdd(true);
     }
-  };
+  } catch (err) {
+    console.error("Generate error:", err);
+  } finally {
+    setIsGenerating(false);
+  }
+};
+
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
@@ -434,7 +446,7 @@ function App() {
                     className="flex-1 px-4 py-2 rounded-xl border border-gray-300 focus:border-blue-500"
                   />
                   <button
-                    onClick={loadHistory}
+                    onClick={() => loadHistory()}
                     className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition"
                   >
                     Load
