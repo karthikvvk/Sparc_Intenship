@@ -323,8 +323,8 @@ def update_summary_in_db(conn, cursor, patient_id, new_text, method="replace"):
 
 if __name__ == "__main__":
     url = None
-    # url = try_cloudflare(port=5000)
-    # print("Tunnel URL:", url)
+    url = try_cloudflare(port=5000)
+    print("Tunnel URL:", url)
     if url is None:
         url = ("http://127.0.0.1:5000",)
     set_key("./frontend/.env", "VITE_API_URL", url[0])
