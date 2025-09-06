@@ -1,11 +1,9 @@
 import os
 import subprocess
 import sys
-import csv
-import json
 import platform
 
-# ========== Function: Install/Update Pip & Packages ==========
+# ===================== Function: Update pip =====================
 def ensure_pip_updated():
     try:
         subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "pip"])
@@ -13,132 +11,350 @@ def ensure_pip_updated():
     except Exception as e:
         print(f"[!] Failed to update pip: {e}")
 
+# ===================== Function: Install Packages =====================
 def install_packages(packages):
     if os.path.exists("requirements.txt"):
         os.system(f"{sys.executable} -m pip install -r requirements.txt")
-    if input("[?] Do you want to install/update additional packages? (yes/no): ").strip().lower() == "yes":
-        for missing in packages:
-            print(f"[?] Checking packages: {missing}")
+    if input("[?] Install/update additional packages? (yes/no): ").strip().lower() == "yes":
+        for pkg in packages:
             try:
-                subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", missing])
-                print(f"[✓] Package {missing} installed/updated.")
+                subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", pkg])
+                print(f"[✓] {pkg} installed/updated.")
             except Exception as e:
-                print(f"[!] Package installation failed: {e}")
+                print(f"[!] Failed to install {pkg}: {e}")
 
-# ========== Function: Handle Model Download (Linux + Windows) ==========
+# ===================== Function: Download Models =====================
 def handle_model(mods):
-    for model_name, download_url in mods.items():
-        model_path = f"./models/{model_name}"
-        if not os.path.exists(model_path):
-            choice = input(f"[?] Model '{model_name}' not found. Download it? (yes/no): ").strip().lower()
+    for model_name, url in mods.items():
+        path = f"./models/{model_name}"
+        if not os.path.exists(path):
+            choice = input(f"[?] Download model '{model_name}'? (yes/no): ").strip().lower()
             if choice == "yes":
                 os.makedirs("./models", exist_ok=True)
-                print(f"[↓] Downloading {model_name} from {download_url} ...")
+                print(f"[↓] Downloading {model_name} ...")
                 try:
                     if platform.system() == "Windows":
-                        subprocess.check_call(["powershell", "-Command", f"Invoke-WebRequest -Uri {download_url} -OutFile {model_path}"])
+                        subprocess.check_call(["powershell", "-Command", f"Invoke-WebRequest -Uri {url} -OutFile {path}"])
                     else:
-                        subprocess.check_call(["curl", "-L", download_url, "-o", model_path])
-                    print(f"[✓] Model downloaded to {model_path}")
+                        subprocess.check_call(["curl", "-L", url, "-o", path])
+                    print(f"[✓] Model saved at {path}")
                 except Exception as e:
-                    print(f"[!] Failed to download model: {e}")
+                    print(f"[!] Download failed: {e}")
                     sys.exit(1)
             else:
-                model_path = input("[?] Enter full path to the model: ").strip()
-                if not os.path.exists(model_path):
-                    print(f"[!] Model path '{model_path}' not found. Exiting.")
+                path = input("[?] Enter full path to model: ").strip()
+                if not os.path.exists(path):
+                    print(f"[!] Path not found. Exiting.")
                     sys.exit(1)
 
-# ========== Main Starter Function (rest remains same) ==========
+# ===================== MySQL Table Definitions =====================
+TABLES_SQL = [
+    # Paste all your table SQL definitions here exactly as in your message
+    """CREATE TABLE IF NOT EXISTS sparrc_appointments (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        patient_id INT,
+        doctor_id VARCHAR(50),
+        appointment_date DATETIME,
+        status ENUM('pending','approved','rejected','rescheduled') DEFAULT 'pending',
+        reason TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        KEY idx_patient_id (patient_id),
+        KEY idx_doctor_id (doctor_id)
+    )""",
+    """CREATE TABLE IF NOT EXISTS sparrc_doctor_info (
+        doctor_id VARCHAR(50) PRIMARY KEY,
+        doctor_name VARCHAR(255),
+        dob DATE,
+        contact_number VARCHAR(20),
+        email VARCHAR(255),
+        specialization VARCHAR(255),
+        date_joined DATE,
+        years_of_experience INT,
+        clinic_branch TEXT,
+        verified TINYINT(1) DEFAULT 0
+    )""",
+    """CREATE TABLE IF NOT EXISTS sparrc_patient_history (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        patient_id INT,
+        doctor_id VARCHAR(50),
+        visit_date DATETIME,
+        diagnosis TEXT,
+        treatment TEXT,
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        KEY idx_patient_id (patient_id),
+        KEY idx_doctor_id (doctor_id)
+    )""",
+    """CREATE TABLE IF NOT EXISTS sparrc_patient_info (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        patient_name VARCHAR(255),
+        password VARCHAR(255),
+        dob DATE,
+        age INT,
+        mobile_number VARCHAR(20),
+        emergency_contact VARCHAR(20),
+        gender VARCHAR(20),
+        address TEXT,
+        referred_by VARCHAR(255),
+        consultation_type VARCHAR(255),
+        occupation VARCHAR(255),
+        lifestyle VARCHAR(255),
+        email VARCHAR(255),
+        recent_viral_infection VARCHAR(255),
+        vitamin_d3_level VARCHAR(50),
+        main_complaints TEXT,
+        complaint_duration VARCHAR(255),
+        pain_duration VARCHAR(255),
+        pain_region VARCHAR(255),
+        joint_name VARCHAR(255),
+        joint_side VARCHAR(50),
+        pain_scale INT,
+        pain_presentation VARCHAR(255),
+        pain_character VARCHAR(255),
+        onset VARCHAR(255),
+        aggravating_factors TEXT,
+        associated_symptoms TEXT,
+        relieving_factors TEXT,
+        medical_history TEXT,
+        movement_restriction VARCHAR(255),
+        advised_for_surgery VARCHAR(50),
+        current_medication TEXT,
+        past_surgery_or_accident TEXT,
+        recent_travel_or_function TEXT,
+        recent_activities TEXT,
+        optimal_water_intake VARCHAR(50),
+        investigation_report TEXT,
+        previous_treatment_details TEXT,
+        treatment_outcome TEXT,
+        received_injection_or_surgery VARCHAR(50),
+        ergonomic_setup VARCHAR(255),
+        sunlight_exposure_hours VARCHAR(50),
+        caregiving_responsibility VARCHAR(255),
+        challenging_daily_activities TEXT,
+        walking_pain_description TEXT,
+        work_or_hobbies_impact TEXT,
+        sleep_hours VARCHAR(50),
+        sleep_quality VARCHAR(50),
+        post_sleep_recovery VARCHAR(255),
+        furniture_used VARCHAR(255),
+        sitting_posture VARCHAR(255),
+        screen_time_hours VARCHAR(50),
+        screen_devices_used VARCHAR(255),
+        mattress_type VARCHAR(255),
+        mattress_flipping_frequency VARCHAR(50),
+        mattress_age VARCHAR(50),
+        daily_commute_details TEXT,
+        transportation_mode VARCHAR(50),
+        vehicle_model VARCHAR(100),
+        vehicle_age VARCHAR(50),
+        road_condition VARCHAR(100),
+        self_drive VARCHAR(10),
+        passenger_seat_preference VARCHAR(100),
+        footwear_age_model VARCHAR(100),
+        sports_shoe_model VARCHAR(100),
+        sports_shoes_used_casually VARCHAR(50),
+        shoe_toe_box_pinching VARCHAR(50),
+        emotional_stress_level VARCHAR(50),
+        physical_stress_level VARCHAR(50),
+        mental_stress_level VARCHAR(50),
+        stress_triggers TEXT,
+        updated_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        reported_by VARCHAR(255),
+        doctor_id VARCHAR(50),
+        prescribed_by VARCHAR(255),
+        doctor_prescribed TEXT,
+        report_link TEXT,
+        report_summary TEXT
+    )""",
+    """CREATE TABLE IF NOT EXISTS sparrc_patient_reports (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        patient_id INT NOT NULL,
+        doctor_id VARCHAR(50) NOT NULL,
+        report_summary TEXT NOT NULL,
+        report_link VARCHAR(255),
+        reported_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        KEY idx_patient_id (patient_id),
+        KEY idx_doctor_id (doctor_id)
+    )""",
+    """CREATE TABLE IF NOT EXISTS sparrc_users (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        username VARCHAR(255) NOT NULL UNIQUE,
+        password VARCHAR(255) NOT NULL,
+        role ENUM('admin','doctor') NOT NULL,
+        doctor_id VARCHAR(50),
+        KEY idx_doctor_id (doctor_id)
+    )"""
+]
+
+# ===================== Main Starter Function =====================
 def starter():
     from dotenv import load_dotenv
-    load_dotenv(dotenv_path="./frontend/.env")
-
-    import mysql.connector
     from fpdf import FPDF
+    import mysql.connector
 
-    db_config = {
-        'host': os.getenv("DB_HOST"),
-        'user': os.getenv("DB_USER"),
-        'password': os.getenv("DB_PASSWORD"),
-        'database': os.getenv("DB_NAME")
-    }
+    load_dotenv(dotenv_path="./frontend/.env")
+    def ensure_mysql_connector():
+        try:
+            import mysql.connector  # noqa
+        except ImportError:
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "mysql-connector-python"])
+            print("[✓] mysql-connector-python installed.")
 
-    col_defs_str = """CREATE TABLE IF NOT EXISTS patient_details (... same table definition ...)"""
+    # ===================== Table Definitions =====================
+    TABLES_SQL = [
+        """CREATE TABLE IF NOT EXISTS sparrc_patient_info (
+            id VARCHAR(30) PRIMARY KEY,
+            patient_name VARCHAR(255),
+            password VARCHAR(255),
+            dob DATE,
+            age INT,
+            mobile_number VARCHAR(20),
+            emergency_contact VARCHAR(20),
+            gender VARCHAR(20),
+            address TEXT,
+            referred_by VARCHAR(255),
+            consultation_type VARCHAR(255),
+            occupation VARCHAR(255),
+            lifestyle VARCHAR(255),
+            email VARCHAR(255),
+            recent_viral_infection VARCHAR(255),
+            vitamin_d3_level VARCHAR(50),
+            main_complaints TEXT,
+            complaint_duration VARCHAR(255),
+            pain_duration VARCHAR(255),
+            pain_region VARCHAR(255),
+            joint_name VARCHAR(255),
+            joint_side VARCHAR(50),
+            pain_scale INT,
+            pain_presentation VARCHAR(255),
+            pain_character VARCHAR(255),
+            onset VARCHAR(255),
+            aggravating_factors TEXT,
+            associated_symptoms TEXT,
+            relieving_factors TEXT,
+            medical_history TEXT,
+            movement_restriction VARCHAR(255),
+            advised_for_surgery VARCHAR(50),
+            current_medication TEXT,
+            past_surgery_or_accident TEXT,
+            recent_travel_or_function TEXT,
+            recent_activities TEXT,
+            optimal_water_intake VARCHAR(50),
+            investigation_report TEXT,
+            previous_treatment_details TEXT,
+            treatment_outcome TEXT,
+            received_injection_or_surgery VARCHAR(50),
+            ergonomic_setup VARCHAR(255),
+            sunlight_exposure_hours VARCHAR(50),
+            caregiving_responsibility VARCHAR(255),
+            challenging_daily_activities TEXT,
+            walking_pain_description TEXT,
+            work_or_hobbies_impact TEXT,
+            sleep_hours VARCHAR(50),
+            sleep_quality VARCHAR(50),
+            post_sleep_recovery VARCHAR(255),
+            furniture_used VARCHAR(255),
+            sitting_posture VARCHAR(255),
+            screen_time_hours VARCHAR(50),
+            screen_devices_used VARCHAR(255),
+            mattress_type VARCHAR(255),
+            mattress_flipping_frequency VARCHAR(50),
+            mattress_age VARCHAR(50),
+            daily_commute_details TEXT,
+            transportation_mode VARCHAR(50),
+            vehicle_model VARCHAR(100),
+            vehicle_age VARCHAR(50),
+            road_condition VARCHAR(100),
+            self_drive VARCHAR(10),
+            passenger_seat_preference VARCHAR(100),
+            footwear_age_model VARCHAR(100),
+            sports_shoe_model VARCHAR(100),
+            sports_shoes_used_casually VARCHAR(50),
+            shoe_toe_box_pinching VARCHAR(50),
+            emotional_stress_level VARCHAR(50),
+            physical_stress_level VARCHAR(50),
+            mental_stress_level VARCHAR(50),
+            stress_triggers TEXT,
+            updated_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            reported_by VARCHAR(255),
+            doctor_id VARCHAR(50),
+            prescribed_by VARCHAR(255),
+            doctor_prescribed TEXT,
+            report_link TEXT,
+            report_summary TEXT
+        )""",
+        """CREATE TABLE IF NOT EXISTS sparrc_doctor_info (
+            doctor_id VARCHAR(50) PRIMARY KEY,
+            doctor_name VARCHAR(255),
+            dob DATE,
+            contact_number VARCHAR(20),
+            email VARCHAR(255),
+            specialization VARCHAR(255),
+            date_joined DATE,
+            years_of_experience INT,
+            clinic_branch TEXT,
+            verified TINYINT(1) DEFAULT 0
+        )"""
+    ]
 
-    pdf_dirs = ["./patient_his_pdf", "./temppdfs"]
-    for d in pdf_dirs:
-        os.makedirs(d, exist_ok=True)
+    # ===================== Sample Inserts =====================
+    SAMPLE_INSERTS = [
+        """INSERT INTO sparrc_patient_info 
+(id, patient_name, dob, age, mobile_number, emergency_contact, gender, address, referred_by, consultation_type, occupation, lifestyle, email, recent_viral_infection, vitamin_d3_level, main_complaints, complaint_duration, pain_duration, pain_region, joint_name, joint_side, pain_scale, pain_presentation, pain_character, onset, aggravating_factors, associated_symptoms, relieving_factors, medical_history, movement_restriction, advised_for_surgery, current_medication, past_surgery_or_accident, recent_travel_or_function, recent_activities, optimal_water_intake, investigation_report, previous_treatment_details, treatment_outcome, received_injection_or_surgery, ergonomic_setup, sunlight_exposure_hours, caregiving_responsibility, challenging_daily_activities, walking_pain_description, work_or_hobbies_impact, sleep_hours, sleep_quality, post_sleep_recovery, furniture_used, sitting_posture, screen_time_hours, screen_devices_used, mattress_type, mattress_flipping_frequency, mattress_age, daily_commute_details, transportation_mode, vehicle_model, vehicle_age, road_condition, self_drive, passenger_seat_preference, footwear_age_model, sports_shoe_model, sports_shoes_used_casually, shoe_toe_box_pinching, emotional_stress_level, physical_stress_level, mental_stress_level, stress_triggers, reported_by, doctor_id, prescribed_by, doctor_prescribed, report_link, report_summary)
+VALUES
+("P001", 'Anandan Kumar','1983-05-12',41,'+91 9876543210','+91 9988776655','Male','12, Gandhi Street, T. Nagar, Chennai','Dr. Selvam','In Person','IT Professional','Sedentary','anandan.k@email.com','Nil','22 ng/mL','Chronic Low Back Pain','5 years','Chronic','Lumbar Spine L4-L5','Spine','Bilateral',7,'Continuous,Movement Associated','Dull ache with occasional sharpness','Gradual','Prolonged sitting, Bending forward','Numbness in left leg','Resting','None','Yes','Nil','Occasional painkiller','None','None','Started using a new office chair','Yes','MRI shows L4-L5 disc bulge','Physiotherapy 2 years ago','Temporary relief','Nil','Nil','Less than 30 mins','Nil','Difficulty tying shoelaces','Pain radiates down the leg after 1km','Reduced productivity at work','6','Disturbed due to pain','Stiff in the morning','Ergonomic Chair','Slouched','10','Laptop, Mobile','Foam','Never','7 years','25km daily commute','Car','Hyundai Verna','5 years','Mixed, many potholes','Yes','Nil','Clarks leather shoes 3 years','Nike Revolution 5','Yes','Nil','7','5','8','Work deadlines, Traffic','Patient','D001','Dr. Selvam','MRI confirmed L4-L5 disc bulge, Physiotheraphy','./patient_his_pdf/P001.pdf','NIL'),
 
-    def create_pdf_if_not_exists(pdf_name, row_dict):
-        pdf_paths = []
-        for d in pdf_dirs:
-            pdf_path = os.path.join(d, f"{pdf_name}.pdf")
-            if not os.path.exists(pdf_path):
-                pdf = FPDF()
-                pdf.add_page()
-                pdf.set_font("Arial", size=10)
-                json_str = json.dumps(row_dict, indent=4)
-                for line in json_str.splitlines():
-                    pdf.multi_cell(0, 5, line)
-                pdf.output(pdf_path)
-                print(f"[+] Created PDF: {pdf_path}")
-            pdf_paths.append(pdf_path)
-        return pdf_paths[0]
+("P002", 'Priya Venkatesh','1995-11-20',28,'+91 9123456789','+91 9234567890','Female','45, Cross Cut Road, Gandhipuram, Coimbatore','Friend','Online','Teacher','Active','priya.v@email.com','Yes','18.5 ng/mL','Right Knee Pain','3 months','Subacute','Anterior Right Knee','Knee','Right',6,'Intermittent,Movement Associated','Sharp pain on climbing stairs','Sudden','Climbing stairs, Squatting','Swelling around the kneecap','Resting,Painkillers','None','Yes','Nil','Ibuprofen as needed','None','Attended a temple festival','Increased jogging distance recently','Nil','X-ray shows no bony abnormality','Applied ice packs and rest','Mild improvement','Nil','Yes','1-2 hours','Nil','Squatting for prayers','Pain is sharp only on stairs','Stopped jogging','7.5','Good','Feels refreshed','Wooden dining chair','Upright','4','Mobile, Laptop','Cotton','Every 6 months','4 years','8km to school','Scooter','Honda Activa','3 years','Good city roads','Yes','Nil','Bata sandals 1 year','Puma running shoes','Nil','Nil','4','6','5','Managing classroom discipline','Patient','D002','Dr. Arjun','Right knee pain with mild swelling, First Aid','./patient_his_pdf/P002.pdf','NIL');""",
+        """INSERT INTO sparrc_doctor_info 
+(doctor_id, doctor_name, dob, contact_number, email, specialization, date_joined, years_of_experience, clinic_branch)
+VALUES
+('D001', 'Dr. Selvam', '1970-05-15', '+91 9090909090', 'dr.selvam@sparrc.com', 'Spine Care Specialist', '2015-08-25', 15, 'Anna Nagar, Chennai'),
+('D002', 'Dr. Arjun', '1980-08-20', '+91 8080808080', 'dr.arjun@sparrc.com', 'Sports Medicine Specialist', '2015-08-25', 10, 'Avadi, Chennai');
+    """]
 
-    conn = mysql.connector.connect(host=db_config['host'], user=db_config['user'], password=db_config['password'])
+    # ===================== Main Function =====================
+    ensure_mysql_connector()
+    import mysql.connector
+
+    db_host = os.getenv("DB_HOST", "localhost")
+    db_user = os.getenv("DB_USER", "root")
+    db_pass = os.getenv("DB_PASSWORD", "rootpass")
+    db_name = os.getenv("DB_NAME", "sparrc")
+
+    conn = mysql.connector.connect(host=db_host, user=db_user, password=db_pass)
     cursor = conn.cursor()
-    cursor.execute(f"CREATE DATABASE IF NOT EXISTS {db_config['database']}")
-    conn.database = db_config['database']
-    cursor.execute(col_defs_str)
 
-    csv_file = os.getenv("CSV_FILE")
-    with open(csv_file, "r", encoding="utf-8", errors="replace") as file:
-        reader = csv.reader(file)
-        headers = next(reader)
-        col_len = len(headers)
+    cursor.execute(f"CREATE DATABASE IF NOT EXISTS {db_name}")
+    conn.database = db_name
 
-        for row in reader:
-            if len(row) < col_len:
-                row += ["null"] * (col_len - len(row))
-            elif len(row) > col_len:
-                row = row[:col_len]
+    # create tables
+    for sql in TABLES_SQL:
+        cursor.execute(sql)
+    print("[✓] Tables created.")
 
-            row = [None if v is None or v.strip().lower() == "null" or v.strip() == "" else v for v in row]
+    # insert sample data
+    for ins in SAMPLE_INSERTS:
+        try:
+            cursor.execute(ins)
+        except mysql.connector.errors.IntegrityError:
+            pass
+    conn.commit()
+    print("[✓] Sample data inserted.")
 
-            placeholders = ", ".join(["%s"] * col_len)
-            columns = ", ".join(headers)
-            insert_query = f"""
-            INSERT INTO patient_details ({columns}) 
-            VALUES ({placeholders})
-            ON DUPLICATE KEY UPDATE updated_on = VALUES(updated_on)
-            """
-
-            try:
-                cursor.execute(insert_query, row)
-                conn.commit()
-                row_dict = dict(zip(headers, row))
-                pdf_path = create_pdf_if_not_exists(row[0], row_dict)
-
-                update_query = "UPDATE patient_details SET med_history_pdf = %s WHERE id = %s"
-                cursor.execute(update_query, (pdf_path, row[0]))
-                conn.commit()
-            except Exception as e:
-                print(f"[!] Error inserting row {row[0]}: {e}")
-
-    print("[✓] Processing complete.\nNow run 'python Server.py' to start the server.")
-
-# ========== Execution ==========
+    cursor.close()
+    conn.close()
+# ===================== Execute =====================
 if __name__ == "__main__":
     ensure_pip_updated()
 
     os.system(f"{sys.executable} -m pip list >> piplist.txt")
-    piplis = open("piplist.txt").readlines()
-    piplis = [i.split()[0].lower() for i in piplis[2:]]
-    install_packages(piplis)
+    packages = [line.split()[0] for line in open("piplist.txt").readlines()[2:]]
+    install_packages(packages)
 
     handle_model({
         "gpt-oss-20b-MXFP4.gguf": "https://huggingface.co/lmstudio-community/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-MXFP4.gguf",
         "medgemma-4b-it-Q4_K_M.gguf": "https://huggingface.co/lmstudio-community/medgemma-4b-it-GGUF/resolve/main/medgemma-4b-it-Q4_K_M.gguf"
     })
+
     starter()

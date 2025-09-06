@@ -21,11 +21,44 @@ function App() {
   const API_URL = import.meta.env.VITE_API_URL;
   console.log("API URL:", API_URL);
   const [isMerging, setIsMerging] = useState(false);
+  const [historyPatientId, setHistoryPatientId] = useState('');
 
   // States to control button disabled/enabled status
   const [areButtonsEnabled, setAreButtonsEnabled] = useState(false);
   const [isReEnableDisabled, setIsReEnableDisabled] = useState(false);
+  const [canAdd, setCanAdd] = useState(false);
+// ... (inside the App component)
+  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault(); // Prevents the browser from opening the file
 
+    const droppedFile = event.dataTransfer.files[0];
+    if (droppedFile && droppedFile.type === "application/pdf") {
+      setPdfFile(droppedFile);
+      setIsModalOpen(false); // Close the modal after a successful drop
+    } else {
+      // Optional: Add a visual cue or a message for invalid file types
+      alert("Please drop a PDF file.");
+    }
+  };
+
+
+  const loadHistory = async () => {
+    if (!historyPatientId.trim()) return;
+    try {
+      const response = await fetch(`${API_URL}/load_history`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ patientId: historyPatientId }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Failed to load history");
+
+      // Assuming the backend returns an array of history items
+      setSummaryHistory(result.history || []);
+    } catch (err) {
+      console.error("Load history error:", err);
+    }
+  };
   // Effect to manage button states based on inputs
   useEffect(() => {
     if (patientId.trim() !== '' && !pdfFile) {
@@ -43,7 +76,6 @@ function App() {
     }
   }, [patientId, pdfFile]);
 
-
   const validateForm = () => {
     const newErrors: { patientId?: string; pdfFile?: string } = {};
     if (!patientId.trim() && !pdfFile) {
@@ -52,6 +84,49 @@ function App() {
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
+
+  const updateSummary = async (method: "replace" | "merge" | "add") => {
+    if (!validateForm() || !summaryData) return;
+
+    try {
+      const response = await fetch(`${API_URL}/update_summary`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          patientId,
+          idea: idea && idea.trim() !== "" ? idea : summaryData.idea,
+          summary: summaryData.summary,
+          method,
+        }),
+      });
+
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Update failed");
+
+      const cleanSummary: SummaryData = {
+        summary: result.summary,
+        idea: result.idea ?? idea ?? summaryData.idea ?? null,
+      };
+
+      setSummaryData(cleanSummary);
+      setSummaryHistory((prev) => [cleanSummary, ...prev]);
+      await loadHistory();
+      if (method === "add") {
+        setCanAdd(false); // 🔒 disable add after use
+      }
+    } catch (err) {
+      console.error(`${method} error:`, err);
+    } finally {
+      if (method === "merge") setIsMerging(false);
+    }
+  };
+
+  const handleReplace = () => updateSummary("replace");
+  const handleMerge = () => {
+    setIsMerging(true);
+    updateSummary("merge");
+  };
+  const handleAddVersion = () => updateSummary("add");
 
   const generateSummary = async () => {
     if (!validateForm()) return;
@@ -77,6 +152,7 @@ function App() {
 
         setSummaryData(cleanSummary);
         setSummaryHistory((prev) => [cleanSummary, ...prev]);
+        setCanAdd(true);
       } else {
         const response = await fetch(`${API_URL}/start_summarisation`, {
           method: "POST",
@@ -94,6 +170,7 @@ function App() {
 
         setSummaryData(cleanSummary);
         setSummaryHistory((prev) => [cleanSummary, ...prev]);
+        setCanAdd(true); 
       }
     } catch (err) {
       console.error("Generate error:", err);
@@ -109,94 +186,6 @@ function App() {
     }
   };
 
- const handleMerge = async () => {
-  if (!validateForm() || !summaryData) return;
-  setIsMerging(true); // Start loading animation
-
-  try {
-    const response = await fetch(`${API_URL}/merge`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        patientId,
-        idea: idea && idea.trim() !== "" ? idea : summaryData.idea,
-        summary: summaryData.summary,
-      }),
-    });
-
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error || "Merge failed");
-
-    const cleanSummary: SummaryData = {
-      summary: result.summary ?? summaryData.summary,
-      idea: result.idea ?? idea ?? summaryData.idea ?? null,
-    };
-
-    setSummaryData(cleanSummary);
-    setSummaryHistory((prev) => [cleanSummary, ...prev]);
-  } catch (err) {
-    console.error("Merge error:", err);
-  } finally {
-    setIsMerging(false); // Stop loading animation
-  }
-};
-
-  const handleReplace = async () => {
-    if (!validateForm() || !summaryData) return;
-    try {
-      const response = await fetch(`${API_URL}/replace`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          patientId,
-          idea: idea && idea.trim() !== "" ? idea : summaryData.idea,
-          summary: summaryData.summary,
-        }),
-      });
-
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "Replace failed");
-
-      const cleanSummary: SummaryData = {
-        summary: result.summary ?? summaryData.summary,
-        idea: result.idea ?? idea ?? summaryData.idea ?? null,
-      };
-
-      setSummaryData(cleanSummary);
-      setSummaryHistory([cleanSummary]);
-    } catch (err) {
-      console.error("Replace error:", err);
-    }
-  };
-
-  const handleAddVersion = async () => {
-    if (!validateForm() || !summaryData) return;
-    try {
-      const response = await fetch(`${API_URL}/add`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          patientId,
-          idea: idea && idea.trim() !== "" ? idea : null,
-          summary: summaryData.summary,
-        }),
-      });
-
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "Add failed");
-
-      const cleanSummary: SummaryData = {
-        summary: result.summary,
-        idea: result.idea ?? (idea && idea.trim() !== "" ? idea : null),
-      };
-
-      setSummaryData(cleanSummary);
-      setSummaryHistory((prev) => [cleanSummary, ...prev]);
-    } catch (err) {
-      console.error("Add error:", err);
-    }
-  };
-
   return (
     <div
       className="min-h-screen bg-cover bg-center relative"
@@ -208,7 +197,7 @@ function App() {
       <div className="container mx-auto px-4 py-8 max-w-4xl relative z-10">
 
         {/* History Button */}
-        <div className="absolute top-6 right-6">
+        <div className="fixed top-6 right-6 z-20">
           <button
             onClick={() => setShowHistory(true)}
             className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-xl shadow hover:bg-blue-700 transition"
@@ -353,11 +342,16 @@ function App() {
 
               <button
                 onClick={handleAddVersion}
-                disabled={!areButtonsEnabled}
-                className={`px-6 py-3 rounded-lg font-medium transition ${!areButtonsEnabled ? 'bg-gray-400 cursor-not-allowed text-gray-200' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
+                disabled={!areButtonsEnabled || !canAdd}
+                className={`px-6 py-3 rounded-lg font-medium transition ${
+                  !areButtonsEnabled || !canAdd
+                    ? 'bg-gray-400 cursor-not-allowed text-gray-200'
+                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                }`}
               >
                 Add This Version
               </button>
+
             </div>
           </div>
         )}
@@ -380,16 +374,24 @@ function App() {
                 <h2 className="text-xl font-semibold text-center mb-4">
                   Upload Medical PDF
                 </h2>
-                <label className="w-full flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-xl p-8 text-gray-500 cursor-pointer hover:border-blue-500 hover:text-blue-500 transition">
+                <div
+                  className="w-full flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-xl p-8 text-gray-500 cursor-pointer hover:border-blue-500 hover:text-blue-500 transition"
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={handleDrop}
+                >
                   <input
                     type="file"
+                    id="pdf-upload"
                     accept="application/pdf"
                     className="hidden"
                     onChange={handleFileSelect}
                   />
                   <Upload size={28} />
                   <span className="mt-2">Drop file here or click to browse</span>
-                </label>
+                  <label htmlFor="pdf-upload" className="mt-2 text-blue-500 hover:underline">
+                    or click to browse
+                  </label>
+                </div>
                 <button
                   onClick={() => setIsModalOpen(false)}
                   className="mt-6 w-full bg-gray-200 text-gray-700 px-4 py-2 rounded-xl hover:bg-gray-300 transition"
@@ -423,11 +425,26 @@ function App() {
                   ✕
                 </button>
                 <h3 className="text-xl font-bold mb-4">Summary History</h3>
-                <div className="flex space-x-4 overflow-x-auto pb-4">
+                <div className="flex space-x-2 mb-4">
+                  <input
+                    type="text"
+                    placeholder="Enter patient ID to load history"
+                    value={historyPatientId}
+                    onChange={(e) => setHistoryPatientId(e.target.value)}
+                    className="flex-1 px-4 py-2 rounded-xl border border-gray-300 focus:border-blue-500"
+                  />
+                  <button
+                    onClick={loadHistory}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition"
+                  >
+                    Load
+                  </button>
+                </div>
+                <div className="grid grid-flow-col auto-cols-[300px] gap-4 overflow-x-auto pb-4">
                   {summaryHistory.map((item, idx) => (
                     <div
                       key={idx}
-                      className="min-w-[250px] bg-gradient-to-r from-blue-50 to-cyan-50 rounded-xl p-4 shadow border border-blue-200"
+                            className="bg-gradient-to-r from-blue-50 to-cyan-50 rounded-xl p-4 shadow border border-blue-200"
                     >
                       <p className="text-gray-700 text-sm line-clamp-3">{item.summary}</p>
                       <button
