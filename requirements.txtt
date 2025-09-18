@@ -1,0 +1,17 @@
+flask
+mysql-connector-python
+requests
+llama-cpp-python
+PyMuPDF
+python-docx
+beautifulsoup4
+python-pptx
+Pillow
+pytesseract
+openpyxl
+fpdf
+python-dotenv
+flask_cors
+pycloudflared
+pyngrok
+pdf2image

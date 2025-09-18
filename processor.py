@@ -1,106 +1,68 @@
-# app/processor.py
-import requests
-from tempfile import NamedTemporaryFile
-from pathlib import Path
-import mimetypes
-#-----------------------------#------------------------------------------------------------------#
-def extract_text_from_url(file_url: str):
-    try:
-        # ---------------------- Handle local file ---------------------- #
-        if Path(file_url).exists():
-            ext = Path(file_url).suffix.lower().lstrip(".")
-            tmp_path = Path(file_url)
+from pdf2image import convert_from_path
+import pytesseract
+import tempfile
+import os
+from concurrent.futures import ProcessPoolExecutor, as_completed
+import multiprocessing
+import fitz  # PyMuPDF
 
-        # ---------------------- Handle remote URL ---------------------- #
-        elif file_url.startswith("http://") or file_url.startswith("https://"):
-            head = requests.head(file_url, allow_redirects=True, timeout=10)
-            size = int(head.headers.get("Content-Length", 0) or 0)
-            if size and size > 500 * 1024 * 1024:
-                return "⚠ File too large to process.", None
 
-            ext = file_url.split('?')[0].split('.')[-1].lower()
-            if not ext:
-                ext = (mimetypes.guess_extension(head.headers.get("Content-Type", "")) or "bin").lstrip('.')
+def _ocr_page(idx, img, lang):
+    """Helper function to OCR one page."""
+    page_text = pytesseract.image_to_string(img, lang=lang)
+    return idx, f"--- Page {idx+1} ---\n{page_text.strip()}\n"
 
-            r = requests.get(file_url, timeout=30)
-            r.raise_for_status()
+def extract_text_from_url(pdf_path, output_dir="./extracted", dpi=300, lang="eng"):
+    import shutil
+    os.makedirs(output_dir, exist_ok=True)
+    text_dir = os.path.join(output_dir, "text")
+    img_dir = os.path.join(output_dir, "images", os.path.splitext(os.path.basename(pdf_path))[0])
 
-            with NamedTemporaryFile(delete=False, suffix=f".{ext}") as f:
-                f.write(r.content)
-                f.flush()
-                tmp_path = Path(f.name)
-        else:
-            return "⚠ Invalid file path or URL", None
+    os.makedirs(text_dir, exist_ok=True)
+    os.makedirs(img_dir, exist_ok=True)
 
-        # Lazy import heavy libs
-        if ext == "pdf":
-            import fitz
-            doc = fitz.open(str(tmp_path))
-            return "\n".join(page.get_text() for page in doc), ext
+    doc = fitz.open(pdf_path)
+    all_images = []
+    page_texts = []
 
-        if ext == "docx":
-            import docx
-            doc = docx.Document(str(tmp_path))
-            return "\n".join(p.text for p in doc.paragraphs), ext
+    with tempfile.TemporaryDirectory() as path:
+        for page_num, page in enumerate(doc, start=1):
+            page_text = page.get_text("text").strip()
 
-        if ext == "eml":
-            from bs4 import BeautifulSoup
-            html = tmp_path.read_text(errors="ignore")
-            return BeautifulSoup(html, "html.parser").get_text("\n"), ext
+            # Case 1: Embedded text present
+            if page_text:
+                page_texts.append(f"--- Page {page_num} ---\n{page_text}\n")
+            else:
+                # Case 2: Full page OCR
+                raster_imgs = convert_from_path(
+                    pdf_path, dpi=dpi, first_page=page_num, last_page=page_num,
+                    output_folder=path, thread_count=1
+                )
+                img = raster_imgs[0]
 
-        if ext == "pptx":
-            from pptx import Presentation
-            from PIL import Image
-            import pytesseract, io
-            prs = Presentation(str(tmp_path))
-            slides = []
-            for slide in prs.slides:
-                slide_text = []
-                for shape in slide.shapes:
-                    if hasattr(shape, "text") and shape.text.strip():
-                        slide_text.append(shape.text.strip())
-                    try:
-                        if hasattr(shape, "image"):
-                            img = Image.open(io.BytesIO(shape.image.blob))
-                            ocr = pytesseract.image_to_string(img)
-                            if ocr.strip():
-                                slide_text.append(ocr.strip())
-                    except Exception:
-                        pass
-                if slide_text:
-                    slides.append("\n".join(slide_text))
-            return ("\n".join(slides) if slides else "⚠ No readable text found in PPTX."), ext
+                ocr_text = pytesseract.image_to_string(img, lang=lang)
+                print(ocr_text)
+                page_texts.append(f"--- Page {page_num} ---\n{ocr_text.strip()}\n")
 
-        if ext in ("png", "jpg", "jpeg"):
-            from PIL import Image
-            import pytesseract
-            img = Image.open(str(tmp_path))
-            txt = pytesseract.image_to_string(img)
-            return (txt if txt.strip() else "⚠ No readable text found in image."), ext
+                # Save full page image too for record
+                full_img_path = os.path.join(img_dir, f"page_{page_num}_full.png")
+                img.save(full_img_path)
+                all_images.append(full_img_path)
 
-        if ext in ("xlsx", "xls"):
-            import openpyxl
-            wb = openpyxl.load_workbook(str(tmp_path), data_only=True)
-            rows = []
-            for sheet in wb.worksheets:
-                for row in sheet.iter_rows(values_only=True):
-                    rows.append(" ".join(str(c) if c is not None else "" for c in row))
-            return ("\n".join(rows) if rows else "⚠ No text found in XLSX."), ext
+            # Extract additional embedded images (optional)
+            # for img_index, img_meta in enumerate(page.get_images(full=True)):
+            #     xref = img_meta[0]
+            #     pix = fitz.Pixmap(doc, xref)
+            #     img_file = os.path.join(img_dir, f"page_{page_num}_img_{img_index+1}.png")
 
-        return f"⚠ Unsupported file format: {ext}", ext
+            #     if pix.n < 5:  # GRAY/RGB
+            #         pix.save(img_file)
+            #     else:  # CMYK -> convert
+            #         pix = fitz.Pixmap(fitz.csRGB, pix)
+            #         pix.save(img_file)
 
-    except Exception as e:
-        return f"⚠ Error processing file: {e}", None
+            #     all_images.append(img_file)
 
-#-----------------------------#------------------------------------------------------------------#
-#creating chunks
-def chunk_text(text: str, chunk_size: int = 400, overlap: int = 100):
-    words = text.split()
-    if not words:
-        return []
-    step = chunk_size - overlap
-    return [" ".join(words[i:i + chunk_size]) for i in range(0, len(words), step)]
-
-#-----------------------------#------------------------------------------------------------------#
-
-#print(extract_text_from_url("/home/muruga/Documents/patient_his_pd/Rajesh Kumar.pdf"))
+    text = "\n".join(page_texts)
+    print([all_images, text])
+    return {"images": all_images, "text": text}
