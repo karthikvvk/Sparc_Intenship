@@ -27,7 +27,8 @@ function App() {
   const [areButtonsEnabled, setAreButtonsEnabled] = useState(false);
   const [isReEnableDisabled, setIsReEnableDisabled] = useState(false);
   const [canAdd, setCanAdd] = useState(false);
-// ... (inside the App component)
+  const [useSavedPdf, setUseSavedPdf] = useState(false); // New state for the toggle
+
   const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault(); // Prevents the browser from opening the file
 
@@ -41,25 +42,25 @@ function App() {
     }
   };
 
-const loadHistory = async (pid?: string) => {
-  const effectiveId = pid || historyPatientId || patientId;
-  if (!effectiveId.trim()) return;
+  const loadHistory = async (pid?: string) => {
+    const effectiveId = pid || historyPatientId || patientId;
+    if (!effectiveId.trim()) return;
 
-  try {
-    const response = await fetch(`${API_URL}/load_history`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ patientId: effectiveId }),
-    });
+    try {
+      const response = await fetch(`${API_URL}/load_history`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ patientId: effectiveId }),
+      });
 
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error || "Failed to load history");
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Failed to load history");
 
-    setSummaryHistory(result.history || []);
-  } catch (err) {
-    console.error("Load history error:", err);
-  }
-};
+      setSummaryHistory(result.history || []);
+    } catch (err) {
+      console.error("Load history error:", err);
+    }
+  };
 
   // Effect to manage button states based on inputs
   useEffect(() => {
@@ -80,63 +81,63 @@ const loadHistory = async (pid?: string) => {
 
   const validateForm = () => {
     const newErrors: { patientId?: string; pdfFile?: string } = {};
-    if (!patientId.trim() && !pdfFile) {
+    if (!patientId.trim() && !pdfFile && !useSavedPdf) {
       newErrors.patientId = 'Patient ID or PDF is required';
+    } else if (useSavedPdf && !patientId.trim()) {
+      newErrors.patientId = 'Patient ID is required to use a saved PDF.';
     }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-const updateSummary = async (method: "replace" | "merge" | "add") => {
-  if (!validateForm() || !summaryData) return;
+  const updateSummary = async (method: "replace" | "merge" | "add") => {
+    if (!validateForm() || !summaryData) return;
 
-  try {
-    const response = await fetch(`${API_URL}/update_summary`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        patientId,
-        idea: idea && idea.trim() !== "" ? idea : summaryData.idea,
-        summary: summaryData.summary,
-        method,
-      }),
-    });
+    try {
+      const response = await fetch(`${API_URL}/update_summary`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          patientId,
+          idea: idea && idea.trim() !== "" ? idea : summaryData.idea,
+          summary: summaryData.summary,
+          method,
+        }),
+      });
 
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error || "Update failed");
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Update failed");
 
-    const cleanSummary: SummaryData = {
-      summary: result.summary,
-      idea: result.idea ?? idea ?? summaryData.idea ?? null,
-    };
+      const cleanSummary: SummaryData = {
+        summary: result.summary,
+        idea: result.idea ?? idea ?? summaryData.idea ?? null,
+      };
 
-    if (method === "replace" || method === "merge") {
-      // Replace/Merge updates the current summary
-      setSummaryData(cleanSummary);
+      if (method === "replace" || method === "merge") {
+        // Replace/Merge updates the current summary
+        setSummaryData(cleanSummary);
+      }
+
+      if (method === "add") {
+        setCanAdd(false); // disable add after first use
+      }
+
+      // ✅ Always reload history from backend (DB)
+      await loadHistory(patientId);
+
+      if (method === "replace") {
+        // disable all buttons after replace
+        setAreButtonsEnabled(false);
+        setCanAdd(false);
+        setIsReEnableDisabled(true);
+      }
+
+    } catch (err) {
+      console.error(`${method} error:`, err);
+    } finally {
+      if (method === "merge") setIsMerging(false);
     }
-
-    if (method === "add") {
-      setCanAdd(false); // disable add after first use
-    }
-
-    // ✅ Always reload history from backend (DB)
-    await loadHistory(patientId);
-
-    if (method === "replace") {
-      // disable all buttons after replace
-      setAreButtonsEnabled(false);
-      setCanAdd(false);
-      setIsReEnableDisabled(true);
-    }
-
-  } catch (err) {
-    console.error(`${method} error:`, err);
-  } finally {
-    if (method === "merge") setIsMerging(false);
-  }
-};
-
-
+  };
 
   const handleReplace = () => updateSummary("replace");
   const handleMerge = () => {
@@ -150,46 +151,58 @@ const generateSummary = async () => {
   setIsGenerating(true);
 
   try {
+    let body;
+    let headers;
+
     if (pdfFile) {
-      const formData = new FormData();
-      formData.append("pdf", pdfFile);
-
-      const response = await fetch(`${API_URL}/start_summarisation`, {
-        method: "POST",
-        body: formData,
-      });
-
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "Failed to extract PDF");
-
-      setSummaryData({
-        summary: result.summary,
-        idea: result.idea ?? null,
-      });
-      setCanAdd(true); // enable Add button
+      // Case 1: A PDF file is present to be uploaded.
+      // The `useSavedPdf` toggle is ignored here as the user has chosen a new file.
+      body = new FormData();
+      body.append("patientId", patientId);
+      body.append("idea", idea);
+      body.append("pdf", pdfFile); // Signal to the backend that a file is being uploaded.
+      // body.append("file", pdfFile);
+      headers = {}; // Browser handles Content-Type for FormData.
     } else {
-      const response = await fetch(`${API_URL}/start_summarisation`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ patientId, idea }),
-      });
+      // Case 2: No PDF file is selected. The request uses JSON.
+      const requestBody: { patientId: string, idea?: string, pdf?: boolean } = {
+        patientId,
+      };
 
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "Failed to generate summary");
+      if (idea.trim() !== '') {
+        requestBody.idea = idea;
+      }
+      
+      if (useSavedPdf) {
+        requestBody.pdf = true; // Signal to the backend to use the saved PDF from the DB.
+      } else {
+        requestBody.pdf = false; // Explicitly signal no PDF is being used.
+      }
 
-      setSummaryData({
-        summary: result.summary,
-        idea: result.idea ?? (idea && idea.trim() !== "" ? idea : null),
-      });
-      setCanAdd(true);
+      body = JSON.stringify(requestBody);
+      headers = { "Content-Type": "application/json" };
     }
+
+    const response = await fetch(`${API_URL}/start_summarisation`, {
+      method: "POST",
+      headers: headers,
+      body: body,
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "Failed to generate summary");
+
+    setSummaryData({
+      summary: result.summary,
+      idea: result.idea ?? (idea && idea.trim() !== "" ? idea : null),
+    });
+    setCanAdd(true);
   } catch (err) {
     console.error("Generate error:", err);
   } finally {
     setIsGenerating(false);
   }
 };
-
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
@@ -276,6 +289,24 @@ const generateSummary = async () => {
                 Selected: {pdfFile.name}
               </p>
             )}
+
+            {/* Toggle Switch */}
+            <div className="flex items-center justify-between">
+              <label htmlFor="useSavedPdf" className="text-lg font-semibold text-gray-700">
+                Use saved PDF from DB
+              </label>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  id="useSavedPdf"
+                  className="sr-only peer"
+                  checked={useSavedPdf}
+                  onChange={(e) => setUseSavedPdf(e.target.checked)}
+                />
+                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+              </label>
+            </div>
+
 
             {/* Thoughts */}
             {!pdfFile && (

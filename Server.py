@@ -1,6 +1,6 @@
 from Starter import *
 starter()
-
+import time
 from flask import Flask, jsonify, request
 import mysql.connector
 from SumAi import *
@@ -99,8 +99,6 @@ def load_history():
 
 
 
-
-
 # -------------------- ROUTES --------------------
 @app.route("/merge", methods=["POST"])
 def merge_summary():
@@ -141,31 +139,52 @@ def start_summarisation():
         cursor.close()
         conn.close()
 
-        # Handle PDF upload (form-data)
+        # pdf upload via form-data
         if request.content_type and request.content_type.startswith("multipart/form-data"):
+            print("Handling form-data upload")
             patient_id = request.form.get("patientId", "")
             idea = request.form.get("idea", "")
             pdf_file = request.files.get("pdf")
-
+            print(pdf_file)
             if not pdf_file:
                 return jsonify({"error": "PDF file required"}), 400
 
             pdf = f"{temp_pdf}/{pdf_file.filename}"
             pdf_file.save(pdf)
 
-            return handle_single_summarisation(patient_id, idea=idea, pdf=pdf)
+            return handle_single_summarisation(patient_id, idea=idea, pdf=pdf, form="true")
 
         # Handle JSON body
         try:
             data = request.get_json(force=True)
         except Exception:
             return jsonify({"error": "Invalid JSON"}), 400
-
         patient_id = data.get("patientId")
         if not patient_id:
             return jsonify({"error": "patientId is required"}), 400
+        
+        print("pdf_iruka", data.get("pdf"))
+        pdf_value = str(data.get("pdf", "")).strip().lower()
 
-        return handle_single_summarisation(patient_id, idea=data.get("idea", ""))
+        if pdf_value and pdf_value != "false":
+            # pdf is present/selected
+            return handle_single_summarisation(
+                patient_id,
+                idea=data.get("idea", ""),
+                pdf="true",
+                form="false"
+            )
+        elif pdf_value and pdf_value == "false":
+            # pdf is present/selected
+            return handle_single_summarisation(
+                patient_id,
+                idea=data.get("idea", ""),
+                pdf="false",
+                form="false"
+            )
+
+        # 🔴 FIX: ensure fallback return
+        return jsonify({"error": "Invalid pdf flag, must be 'true' or ''"}), 400
 
     except Exception as e:
         return jsonify({"error": str(e)})
@@ -263,26 +282,42 @@ def handle_bulk_summarisation():
         cursor.close()
         conn.close()
 
-def handle_single_summarisation(patient_id, idea="", pdf=""):
-    if pdf:
-        summary = StartSummarize(pdf, idea=idea)
+def handle_single_summarisation(patient_id, idea="", pdf="", form="true"):
+    print("reached handle")
+    if form == "true":
+        #direct pdf upload
+        summary = StartSummarize(path=pdf, idea=idea, form="true")
+        summary = clean_summary_text(summary)
+    elif pdf == "true":
+        #internlm + DB
+        conn = mysql.connector.connect(**db_config)
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM sparrc_patient_info WHERE id = %s", (patient_id,))
+        row = cursor.fetchone()
+        cursor.close()
+        conn.close()
+
+        if not row:
+            return jsonify({"error": f"No patient found with id {patient_id}"}), 404
+
+        pdf_path = row[-2]
+        summary = StartSummarize(path=pdf_path, idea=idea, data=row, pdf='true')
+        summary = clean_summary_text(summary)
+
+    elif pdf == "false":
+        #only medgemma
+        conn = mysql.connector.connect(**db_config)
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM sparrc_patient_info WHERE id = %s", (patient_id,))
+        row = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        summary = StartSummarize(idea=idea, data=row, pdf="false")
         summary = clean_summary_text(summary)
         # summary = "single two"
         return jsonify({"summary": summary, "idea": idea})
 
-    conn = mysql.connector.connect(**db_config)
-    cursor = conn.cursor()
-    cursor.execute("SELECT report_link FROM sparrc_patient_info WHERE id = %s", (patient_id,))
-    row = cursor.fetchone()
-    cursor.close()
-    conn.close()
-
-    if not row:
-        return jsonify({"error": f"No patient found with id {patient_id}"}), 404
-
-    pdf_path = row[0]
-    summary = StartSummarize(pdf_path, idea)
-    summary = clean_summary_text(summary)
+    
     # summary = "single one"
     return jsonify({"summary": summary, "idea": idea})
 
@@ -329,8 +364,8 @@ def update_summary_in_db(conn, cursor, patient_id, new_text, method="replace"):
 if __name__ == "__main__":
     # Open ngrok tunnel
     public_url = None
-    tunnel = ngrok.connect(5000)
-    public_url = tunnel.public_url
+    # tunnel = ngrok.connect(5000)
+    # public_url = tunnel.public_url
     print("Tunnel URL:", public_url)
 
     # Fallback if tunnel fails
@@ -338,7 +373,10 @@ if __name__ == "__main__":
         public_url = "http://127.0.0.1:5000"
 
     # Save to .env
-    set_key("./frontend/.env", "VITE_API_URL", public_url)
+    #set_key("./frontend/.env", "VITE_API_URL", public_url)
 
     # Run Flask
     app.run(host="0.0.0.0", port=5000)
+
+
+

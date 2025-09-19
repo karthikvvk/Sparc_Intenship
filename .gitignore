@@ -18,7 +18,8 @@ __pycache__/
 
 # Virtual environment
 ./virtual
-
+testings/
+extracted/
 # Temp & data folders
 temppdfs/
 patient_his_pdf/

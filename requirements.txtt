@@ -14,3 +14,4 @@ python-dotenv
 flask_cors
 pycloudflared
 pyngrok
+pdf2image

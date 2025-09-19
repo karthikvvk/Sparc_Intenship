@@ -2,6 +2,8 @@ import os
 import subprocess
 import sys
 import platform
+import shutil
+
 
 # ===================== Function: Update pip =====================
 def ensure_pip_updated():
@@ -10,11 +12,13 @@ def ensure_pip_updated():
         print("[✓] pip is up to date.")
     except Exception as e:
         print(f"[!] Failed to update pip: {e}")
+    if os.path.exists("piplist.txt"):
+        os.remove("piplist.txt")
 
 # ===================== Function: Install Packages =====================
 def install_packages(packages):
-    if os.path.exists("requirements.txt"):
-        os.system(f"{sys.executable} -m pip install -r requirements.txt")
+    if os.path.exists("requirements.txtt"):
+        os.system(f"{sys.executable} -m pip install -r requirements.txtt")
     if input("[?] Install/update additional packages? (yes/no): ").strip().lower() == "yes":
         for pkg in packages:
             try:
@@ -24,30 +28,54 @@ def install_packages(packages):
                 print(f"[!] Failed to install {pkg}: {e}")
 
 # ===================== Function: Download Models =====================
+def download_file(url, dest_path):
+    import requests
+    try:
+        with requests.get(url, stream=True, allow_redirects=True) as r:
+            r.raise_for_status()
+            with open(dest_path, "wb") as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+        return True
+    except Exception as e:
+        print(f"[!] Download error: {e}")
+        return False
+
 def handle_model(mods):
+    os.makedirs("./models", exist_ok=True)
+
     for model_name, url in mods.items():
-        path = f"./models/{model_name}"
-        if not os.path.exists(path):
+        dest_path = os.path.join("./models", model_name)
+
+        if not os.path.exists(dest_path):
             choice = input(f"[?] Download model '{model_name}'? (yes/no): ").strip().lower()
             if choice == "yes":
-                os.makedirs("./models", exist_ok=True)
                 print(f"[↓] Downloading {model_name} ...")
-                try:
-                    if platform.system() == "Windows":
-                        subprocess.check_call(["powershell", "-Command", f"Invoke-WebRequest -Uri {url} -OutFile {path}"])
-                    else:
-                        subprocess.check_call(["curl", "-L", url, "-o", path])
-                    print(f"[✓] Model saved at {path}")
-                except Exception as e:
-                    print(f"[!] Download failed: {e}")
+                if download_file(url, dest_path):
+                    print(f"[✓] Model saved at {dest_path}")
+                else:
+                    print("[!] Failed to download. Exiting.")
                     sys.exit(1)
             else:
-                path = input("[?] Enter full path to model: ").strip()
-                if not os.path.exists(path):
+                model_path = input("[?] Enter full path to model: ").strip()
+                if not os.path.exists(model_path):
                     print(f"[!] Path not found. Exiting.")
+                    continue
+                    #sys.exit(1)
+                try:
+                    shutil.copy(model_path, dest_path)
+                    print(f"[✓] Copied model to {dest_path}")
+                except Exception as e:
+                    print(f"[!] Failed to copy model: {e}")
                     sys.exit(1)
+        else:
+            print(f"[✓] Model already present: {dest_path}")
 
-# ===================== MySQL Table Definitions =====================
+
+
+
+
 TABLES_SQL = [
     # Paste all your table SQL definitions here exactly as in your message
     """CREATE TABLE IF NOT EXISTS sparrc_appointments (
@@ -353,8 +381,10 @@ if __name__ == "__main__":
     install_packages(packages)
 
     handle_model({
-        "gpt-oss-20b-MXFP4.gguf": "https://huggingface.co/lmstudio-community/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-MXFP4.gguf",
-        "medgemma-4b-it-Q4_K_M.gguf": "https://huggingface.co/lmstudio-community/medgemma-4b-it-GGUF/resolve/main/medgemma-4b-it-Q4_K_M.gguf"
+        "Intern-S1-mini-Q8_0.gguf": "https://huggingface.co/internlm/Intern-S1-mini-GGUF/blob/main/Q8_0/Intern-S1-mini-Q8_0.gguf",
+        "medgemma-4b-it-Q4_K_M.gguf": "https://huggingface.co/lmstudio-community/medgemma-4b-it-GGUF/resolve/main/medgemma-4b-it-Q4_K_M.gguf",
+        "mmproj-model-F16.gguf": "https://huggingface.co/lmstudio-community/medgemma-4b-it-GGUF/resolve/main/mmproj-model-F16.gguf",
+        "mmproj-Intern-S1-mini-Q8_0.gguf": "https://huggingface.co/internlm/Intern-S1-mini-GGUF/resolve/main/Q8_0/mmproj-Intern-S1-mini-Q8_0.gguf"
     })
 
     starter()

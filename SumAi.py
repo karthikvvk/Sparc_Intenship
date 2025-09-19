@@ -1,105 +1,58 @@
-import time, os, requests
+import os
 from llama_cpp import Llama
-from processor import *
 from dotenv import load_dotenv
-from Cleaner import *
+from Cleaner import clean_summary_text
+from processor import extract_text_from_url  # assuming you keep the same function
+
 # ---------- Load environment variables ----------
 load_dotenv(dotenv_path="./frontend/.env")
 aipath = os.getenv("AI_PATH")
 
-# ---------- Model paths ----------
-lis = [
-    "/medgemma-4b-it-Q4_K_M.gguf",
-    "/gpt-oss-20b-MXFP4.gguf"
-]
-
-# ---------- Select available model ----------
-for i in lis:
-    if i.startswith("http"):
-        try:
-            r = requests.head(i, allow_redirects=True, timeout=5)
-            if r.status_code == 200:
-                model = i
-                break
-        except:
-            continue
-    elif os.path.exists(aipath + i):
-        model = aipath + i
-        break
-else:
-    raise Exception("Model not found. Place the model file correctly.")
-
-model_name = model.split("/")[-1].split(".")[0]
-
+# ---------- Model path (Intern-S1 only) ----------
+intern_s1 = os.path.join(aipath, "Intern-S1-mini-Q8_0.gguf")
+medgemma = os.path.join(aipath, "medgemma-4b-it-Q4_K_M.gguf")
 # ---------- Settings ----------
-space = "\n\n\n\n\n\n"
-maxtokens = 512        # allow bigger summaries
-temp = 0.7
+maxtokens = 512
+temp = 0.5
 topp = 0.9
 repeatpenalty = 1.05
 
-print("Using model:", model)
-
-# ---------- Initialize Llama ----------
-llm = Llama(
-    model_path=model,
-    n_ctx=8192,                   # larger context for big PDFs
-    n_threads=os.cpu_count(),
-    n_batch=512,                  # speed up processing
-    n_gpu_layers=-1               # use GPU if available
-)
-
-print(space, "\nmodel_name:", model_name, "\nmaxtokens:", maxtokens, "\ntopp:", topp,
-          "\nrepeatpenalty:", repeatpenalty, "\ntemp:", temp,model, space)
+# Global cache (single model)
+llm_instance = None
 
 
-# def StartSummarize(path, idea=""):
-#     print(space, "\nmodel_name:", model_name, "\nmaxtokens:", maxtokens, "\ntopp:", topp,
-#           "\nrepeatpenalty:", repeatpenalty, "\ntemp:", temp, space)
-
-#     raw_text, file_ext = extract_text_from_url(path)
-#     inp = clean_summary_text(raw_text)
-    
-#     prompt = f"""
-# write a neet summary about this patient.
-# Patient Information:
-# {inp}
-
-# Doctor's Notes: {idea if idea else "None"}
-# """
-#     print(prompt)
-#     prt = llm.create_chat_completion(
-#         messages=[
-#             {"role": "system", "content": "You are a medical report summarizer."},
-#             {"role": "user", "content": prompt},
-#         ],
-#         max_tokens=maxtokens,
-#         temperature=temp,
-#         top_p=topp,
-#         repeat_penalty=repeatpenalty,
-#     )
-
-#     print(space + "RAW OUTPUT" + space)
-#     print(prt)
-
-#     print(space + "OUTPUT" + space)
-
-#     # --- handle both formats (chat vs. text models) ---
-#     if "message" in prt["choices"][0]:
-#         output = prt["choices"][0]["message"]["content"].strip()
-#     else:
-#         output = prt["choices"][0]["text"].strip()
-
-#     print(output + space)
-#     return output
+def get_model(model="Intern-S1-mini-Q8_0.gguf"):
+    """Always load Intern-S1 (cached)."""
+    global llm_instance
+    if model == "medgemma-4b-it-Q4_K_M.gguf":
+        llm_instance = Llama(
+            model_path=medgemma,
+            n_ctx=8192,
+            n_threads=os.cpu_count(),   # use all available CPU threads
+            n_batch=1024,               # bigger batch → faster (tune depending on VRAM/CPU RAM)
+            n_gpu_layers=-1             # use GPU acceleration fully
+        )
+    else:
+        if not os.path.exists(intern_s1):
+            raise FileNotFoundError(f"Intern-S1 model not found at {intern_s1}")
+        llm_instance = Llama(
+            model_path=intern_s1,
+            n_ctx=8192,
+            n_threads=os.cpu_count(),   # use all available CPU threads
+            n_batch=1024,               # bigger batch → faster (tune depending on VRAM/CPU RAM)
+            n_gpu_layers=-1             # use GPU acceleration fully
+        )
+    return llm_instance
 
 
+def describe_images(images):
+    # Placeholder for actual captioning model
+    return "\n".join([f"Image {os.path.basename(img)}: MRI scan or medical page." for img in images])
 
 
-
-def summarize_chunk(chunk, idea=""):
-    """Summarize one chunk of text to avoid context overflow."""
+def summarize_chunk(chunk, idea, llm):
     prompt = f"""
+You are a medical report summarizer.
 Summarize the following patient information into concise medical notes.
 
 Patient Information:
@@ -107,40 +60,81 @@ Patient Information:
 
 Doctor's Notes: {idea if idea else "None"}
 """
-    prt = llm.create_chat_completion(
-        messages=[
-            {"role": "system", "content": "You are a medical report summarizer."},
-            {"role": "user", "content": prompt},
-        ],
-        max_tokens=maxtokens,
-        temperature=temp,
-        top_p=topp,
-        repeat_penalty=repeatpenalty,
-        stream=False
-    )
-
-    if "message" in prt["choices"][0]:
-        return prt["choices"][0]["message"]["content"].strip()
-    return prt["choices"][0]["text"].strip()
+    try:
+        prt = llm.create_completion(
+            prompt=prompt,
+            max_tokens=maxtokens,
+            temperature=temp,
+            top_p=topp,
+            repeat_penalty=repeatpenalty
+        )
+        if "choices" in prt and len(prt["choices"]) > 0:
+            return prt["choices"][0]["text"].strip()
+    except Exception as e:
+        print(f"[ERROR] Summarization failed: {e}")
+    return "[No output generated]"
 
 
-def StartSummarize(path, idea=""):
-    raw_text, file_ext = extract_text_from_url(path)
-    inp = clean_summary_text(raw_text)
+def StartSummarize(path="", idea="", data="", form="false", pdf="false"):
+    print("reached summary")
+    if form == "true" or pdf == "true":
+        ext = extract_text_from_url(path)
+        images, text = ext["images"], ext["text"]
 
-    # --- chunking large input ---
-    chunk_size = 2000  # tokens approx
-    chunks = [inp[i:i+chunk_size] for i in range(0, len(inp), chunk_size)]
+        inp = clean_summary_text(text)
+        print(inp)
+        llm = get_model()
 
-    partial_summaries = []
-    for idx, ch in enumerate(chunks):
-        print(f"Processing chunk {idx+1}/{len(chunks)}...")
-        partial_summaries.append(summarize_chunk(ch, idea))
+        print(f"\nUsing Intern-S1 (image support = {len(images) > 0})\n")
 
-    # --- final merge summary ---
-    final_input = "\n".join(partial_summaries)
-    final_summary = summarize_chunk(final_input, idea)
+        image_text = describe_images(images) if images else ""
 
-    print(space + "FINAL SUMMARY" + space)
-    print(final_summary + space)
+        # Small chunks for better summarization
+        chunk_size = 5000
+        chunks = [inp[i:i+chunk_size] for i in range(0, len(inp), chunk_size)]
+
+        partial_summaries = []
+        for idx, ch in enumerate(chunks):
+            full_chunk = f"{ch}\n\nImage Information:\n{image_text}"
+            print(f"Processing chunk {idx+1}/{len(chunks)}...")
+            summary = summarize_chunk(full_chunk, idea, llm)
+            partial_summaries.append(summary)
+
+        # Merge summaries into final
+        final_input = "\n".join(partial_summaries)
+        final_summary = summarize_chunk(final_input, idea, llm)
+    else:
+        
+        llm = get_model("medgemma-4b-it-Q4_K_M.gguf")
+        print(f"\nUsing MedGemma (direct data mode)\n")
+
+        # # Ensure data is a string
+        # if isinstance(data, dict):
+        #     data = str(data)
+
+        try:
+            # Proper chat-style completion
+            prt = llm.create_chat_completion(
+                messages=[
+                    {"role": "system", "content": "You are a medical report summarizer."},
+                    {"role": "user", "content": f"Summarize the following patient information:\n{data}"}
+                ],
+                max_tokens=maxtokens,
+                temperature=temp,
+                top_p=topp,
+                repeat_penalty=repeatpenalty
+            )
+
+            if "choices" in prt and len(prt["choices"]) > 0:
+                final_summary = prt["choices"][0]["message"]["content"].strip()
+            else:
+                final_summary = "[No output generated]"
+
+        except Exception as e:
+            print(f"[ERROR] MedGemma summarization failed: {e}")
+            final_summary = "[Error in MedGemma output]"
+
+
+    print("\nFINAL SUMMARY\n")
+    print(final_summary)
     return final_summary
