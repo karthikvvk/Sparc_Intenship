@@ -17,9 +17,9 @@ dist-ssr
 __pycache__/
 
 # Virtual environment
-./virtual
 testings/
 extracted/
+temp_summaries/
 # Temp & data folders
 temppdfs/
 patient_his_pdf/
@@ -38,3 +38,4 @@ models/
 # Misc
 *.txt
 *.pdf
+virtual/
