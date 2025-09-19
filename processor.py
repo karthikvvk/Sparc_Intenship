@@ -41,7 +41,7 @@ def extract_text_from_url(pdf_path, output_dir="./extracted", dpi=300, lang="eng
                 img = raster_imgs[0]
 
                 ocr_text = pytesseract.image_to_string(img, lang=lang)
-                print(ocr_text)
+                # print(ocr_text)
                 page_texts.append(f"--- Page {page_num} ---\n{ocr_text.strip()}\n")
 
                 # Save full page image too for record
@@ -64,5 +64,5 @@ def extract_text_from_url(pdf_path, output_dir="./extracted", dpi=300, lang="eng
             #     all_images.append(img_file)
 
     text = "\n".join(page_texts)
-    print([all_images, text])
+    # print([all_images, text])
     return {"images": all_images, "text": text}

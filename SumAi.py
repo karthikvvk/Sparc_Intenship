@@ -76,13 +76,13 @@ Doctor's Notes: {idea if idea else "None"}
 
 
 def StartSummarize(path="", idea="", data="", form="false", pdf="false"):
-    print("reached summary")
+    # print("reached summary")
     if form == "true" or pdf == "true":
         ext = extract_text_from_url(path)
         images, text = ext["images"], ext["text"]
 
         inp = clean_summary_text(text)
-        print(inp)
+        # print(inp)
         llm = get_model()
 
         print(f"\nUsing Intern-S1 (image support = {len(images) > 0})\n")
@@ -96,7 +96,7 @@ def StartSummarize(path="", idea="", data="", form="false", pdf="false"):
         partial_summaries = []
         for idx, ch in enumerate(chunks):
             full_chunk = f"{ch}\n\nImage Information:\n{image_text}"
-            print(f"Processing chunk {idx+1}/{len(chunks)}...")
+            # print(f"Processing chunk {idx+1}/{len(chunks)}...")
             summary = summarize_chunk(full_chunk, idea, llm)
             partial_summaries.append(summary)
 
@@ -135,6 +135,6 @@ def StartSummarize(path="", idea="", data="", form="false", pdf="false"):
             final_summary = "[Error in MedGemma output]"
 
 
-    print("\nFINAL SUMMARY\n")
-    print(final_summary)
+    # print("\nFINAL SUMMARY\n")
+    # print(final_summary)
     return final_summary

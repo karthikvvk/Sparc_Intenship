@@ -19,7 +19,7 @@ function App() {
   const [showHistory, setShowHistory] = useState(false);
   const [selectedSummary, setSelectedSummary] = useState<SummaryData | null>(null);
   const API_URL = import.meta.env.VITE_API_URL;
-  console.log("API URL:", API_URL);
+  // console.log("API URL:", API_URL);
   const [isMerging, setIsMerging] = useState(false);
   const [historyPatientId, setHistoryPatientId] = useState('');
 

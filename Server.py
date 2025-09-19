@@ -141,11 +141,11 @@ def start_summarisation():
 
         # pdf upload via form-data
         if request.content_type and request.content_type.startswith("multipart/form-data"):
-            print("Handling form-data upload")
+            # print("Handling form-data upload")
             patient_id = request.form.get("patientId", "")
             idea = request.form.get("idea", "")
             pdf_file = request.files.get("pdf")
-            print(pdf_file)
+            # print(pdf_file)
             if not pdf_file:
                 return jsonify({"error": "PDF file required"}), 400
 
@@ -163,7 +163,7 @@ def start_summarisation():
         if not patient_id:
             return jsonify({"error": "patientId is required"}), 400
         
-        print("pdf_iruka", data.get("pdf"))
+        # print("pdf_iruka", data.get("pdf"))
         pdf_value = str(data.get("pdf", "")).strip().lower()
 
         if pdf_value and pdf_value != "false":
@@ -283,7 +283,7 @@ def handle_bulk_summarisation():
         conn.close()
 
 def handle_single_summarisation(patient_id, idea="", pdf="", form="true"):
-    print("reached handle")
+    # print("reached handle")
     if form == "true":
         #direct pdf upload
         summary = StartSummarize(path=pdf, idea=idea, form="true")
@@ -373,7 +373,7 @@ if __name__ == "__main__":
         public_url = "http://127.0.0.1:5000"
 
     # Save to .env
-    #set_key("./frontend/.env", "VITE_API_URL", public_url)
+    set_key("./frontend/.env", "VITE_API_URL", public_url)
 
     # Run Flask
     app.run(host="0.0.0.0", port=5000)
