@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { User, Brain, AlertTriangle, FileText, Activity, History, Upload, Search, List } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { User, Brain, AlertTriangle, FileText, Activity, History, Upload, Search, List, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // --- TYPE DEFINITIONS ---
@@ -29,8 +29,8 @@ const LoadingSpinner = ({ text }: { text: string }) => (
 // ============================================================================
 // --- 1. SEARCH PAGE COMPONENT ---
 // ============================================================================
-const SearchPage = ({ onPatientSelect, onPdfUpload, searchResults, onSearch }: { 
-  onPatientSelect: (patient: PatientDetails) => void; 
+const SearchPage = ({ onPatientSelect, onPdfUpload, searchResults, onSearch }: {
+  onPatientSelect: (patient: PatientDetails) => void;
   onPdfUpload: (file: File) => void;
   searchResults: PatientDetails[];
   onSearch: (query: string) => Promise<void>;
@@ -38,6 +38,7 @@ const SearchPage = ({ onPatientSelect, onPdfUpload, searchResults, onSearch }: {
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSearch = async () => {
     if (!searchQuery.trim()) return;
@@ -63,6 +64,11 @@ const SearchPage = ({ onPatientSelect, onPdfUpload, searchResults, onSearch }: {
       alert("Please drop a PDF file.");
     }
   };
+  
+  const handleAreaClick = () => {
+    fileInputRef.current?.click();
+  };
+
 
   return (
     <>
@@ -102,7 +108,7 @@ const SearchPage = ({ onPatientSelect, onPdfUpload, searchResults, onSearch }: {
 
       {searchResults.length > 0 && (
         <div className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl p-8 border border-white/20">
-          <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center"><List className="mr-2"/>Search Results</h2>
+          <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center"><List className="mr-2" />Search Results</h2>
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead className="bg-gray-100">
@@ -136,19 +142,32 @@ const SearchPage = ({ onPatientSelect, onPdfUpload, searchResults, onSearch }: {
       )}
 
       <AnimatePresence>
-          {isModalOpen && (
-            <motion.div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <motion.div className="bg-white rounded-2xl shadow-xl p-6 w-96" initial={{ scale: 0.9 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}>
-                <h2 className="text-xl font-semibold text-center mb-4">Upload Medical PDF</h2>
-                <div className="w-full flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-xl p-8 cursor-pointer" onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
-                  <input type="file" id="pdf-upload" accept="application/pdf" className="hidden" onChange={handleFileSelect}/>
-                  <Upload size={28} /><span className="mt-2">Drop file here or click to browse</span>
-                </div>
-                <button onClick={() => setIsModalOpen(false)} className="mt-6 w-full bg-gray-200 text-gray-700 px-4 py-2 rounded-xl">Cancel</button>
-              </motion.div>
+        {isModalOpen && (
+          <motion.div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <motion.div className="bg-white rounded-2xl shadow-xl p-6 w-96" initial={{ scale: 0.9 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}>
+              <h2 className="text-xl font-semibold text-center mb-4">Upload Medical PDF</h2>
+              <div
+                className="w-full flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-xl p-8 cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition"
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={handleDrop}
+                onClick={handleAreaClick}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  id="pdf-upload"
+                  accept="application/pdf"
+                  className="hidden"
+                  onChange={handleFileSelect}
+                />
+                <Upload size={28} className="text-gray-500" />
+                <span className="mt-2 text-gray-600">Drop file here or click to browse</span>
+              </div>
+              <button onClick={() => setIsModalOpen(false)} className="mt-6 w-full bg-gray-200 text-gray-700 px-4 py-2 rounded-xl hover:bg-gray-300">Cancel</button>
             </motion.div>
-          )}
-        </AnimatePresence>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   );
 }
@@ -157,10 +176,10 @@ const SearchPage = ({ onPatientSelect, onPdfUpload, searchResults, onSearch }: {
 // ============================================================================
 // --- 2. SUMMARY PAGE COMPONENT ---
 // ============================================================================
-const SummaryPage = ({ patient, initialPdfFile, onBackToSearch }: { 
-  patient: PatientDetails | null; 
-  initialPdfFile: File | null; 
-  onBackToSearch: () => void; 
+const SummaryPage = ({ patient, initialPdfFile, onBackToSearch }: {
+  patient: PatientDetails | null;
+  initialPdfFile: File | null;
+  onBackToSearch: () => void;
 }) => {
   const [idea, setThoughts] = useState('');
   const [pdfFile, setPdfFile] = useState<File | null>(initialPdfFile);
@@ -177,32 +196,19 @@ const SummaryPage = ({ patient, initialPdfFile, onBackToSearch }: {
   const [useSavedPdf, setUseSavedPdf] = useState(false);
 
   const patientId = patient?.id || '';
-
-    const handleBackToSearch = async () => {
-    // flush UI state
-    setSummaryData(null);
-    setPdfFile(null);
-    setThoughts('');
-    setIsGenerating(false);
-
-    // inform backend to stop processing
-    try {
-      await fetch(`${API_URL}/stop`, { method: "POST" });
-    } catch (err) {
-      console.error("Stop request failed:", err);
-    }
-
-    // navigate back immediately
-    onBackToSearch();
-  };
-
   
   useEffect(() => {
-    if (initialPdfFile) {
-        generateSummary();
+    // Pre-fill history search with current patient ID
+    if (patientId) {
+      setHistoryPatientId(patientId);
     }
+  }, [patientId]);
+
+
+  useEffect(() => {
     if(patientId) {
         setAreButtonsEnabled(true);
+        loadHistory(patientId); // Load history when patient is selected
     }
   }, [initialPdfFile, patientId]);
   
@@ -216,7 +222,11 @@ const SummaryPage = ({ patient, initialPdfFile, onBackToSearch }: {
 
   const loadHistory = async (pid?: string) => {
     const effectiveId = pid || historyPatientId || patientId;
-    if (!effectiveId.trim()) return;
+    if (!effectiveId.trim()) {
+        alert("Please provide a Patient ID to load history.");
+        return;
+    };
+
     try {
       const response = await fetch(`${API_URL}/load_history`, {
         method: "POST",
@@ -228,6 +238,11 @@ const SummaryPage = ({ patient, initialPdfFile, onBackToSearch }: {
       setSummaryHistory(result.history || []);
     } catch (err) {
       console.error("Load history error:", err);
+      if (err instanceof Error) {
+        alert(`Failed to load history: ${err.message}`);
+      } else {
+        alert("Failed to load history: Unknown error");
+      }
     }
   };
 
@@ -247,6 +262,10 @@ const SummaryPage = ({ patient, initialPdfFile, onBackToSearch }: {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Update failed");
 
+      // --- This is the key change: reload history after successful update ---
+      await loadHistory(patientId);
+      // -------------------------------------------------------------------
+
       const cleanSummary: SummaryData = {
         summary: result.summary,
         idea: result.idea ?? idea ?? summaryData.idea ?? null,
@@ -257,7 +276,6 @@ const SummaryPage = ({ patient, initialPdfFile, onBackToSearch }: {
       if (method === "add") {
         setCanAdd(false);
       }
-      await loadHistory(patientId);
       if (method === "replace") {
         setAreButtonsEnabled(false);
         setCanAdd(false);
@@ -305,6 +323,17 @@ const SummaryPage = ({ patient, initialPdfFile, onBackToSearch }: {
 
   return (
     <>
+      {/* History Button */}
+       <div className="fixed top-6 right-6 z-20">
+          <button
+            onClick={() => setShowHistory(true)}
+            className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-xl shadow-lg hover:bg-blue-700 transition transform hover:scale-105"
+          >
+            <History className="w-5 h-5" />
+            <span>View History</span>
+          </button>
+        </div>
+
       <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl p-8 mb-8 border border-white/20">
         <div className="space-y-6">
           {patient && (
@@ -393,12 +422,57 @@ const SummaryPage = ({ patient, initialPdfFile, onBackToSearch }: {
       )}
 
       <div className="fixed bottom-6 left-6">
-          <button onClick={handleBackToSearch} className="px-4 py-2 rounded-lg shadow bg-gray-600 text-white hover:bg-gray-700">
-            Back to Search
-          </button>
+        <button 
+          onClick={onBackToSearch} 
+          disabled={isGenerating}   
+          className={`px-4 py-2 rounded-lg shadow 
+            ${isGenerating 
+              ? "bg-gray-400 cursor-not-allowed text-gray-200" 
+              : "bg-gray-600 text-white hover:bg-gray-700"}`}
+        >
+          Back to Search
+        </button>
+
       </div>
 
-      {/* History and Full Summary Modals are here */}
+      {/* History and Full Summary Modals */}
+       <AnimatePresence>
+          {showHistory && (
+            <motion.div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <motion.div className="bg-white rounded-2xl shadow-xl p-6 w-11/12 max-w-3xl relative" initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}>
+                <button onClick={() => setShowHistory(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-700 transition"><X size={24}/></button>
+                <h3 className="text-2xl font-bold mb-4 text-gray-800">Summary History</h3>
+
+                <div className="max-h-[60vh] overflow-y-auto space-y-3 pr-2">
+                 {summaryHistory.length > 0 ? summaryHistory.map((item, idx) => (
+                    <div key={idx} className="bg-white rounded-xl p-4 shadow-sm border flex justify-between items-center">
+                      <div>
+                        <p className="font-semibold text-gray-600">Version {summaryHistory.length - idx}</p>
+                        <p className="text-gray-700 text-sm line-clamp-2 mt-1">{item.summary}</p>
+                      </div>
+                      <button onClick={() => setSelectedSummary(item)} className="ml-4 flex-shrink-0 bg-blue-100 text-blue-800 px-4 py-2 rounded-lg hover:bg-blue-200 text-sm font-semibold">View Full</button>
+                    </div>
+                  )) : (
+                    <div className="text-center py-8 text-gray-500">
+                        <p>No history found for this patient.</p>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+        <AnimatePresence>
+          {selectedSummary && (
+            <motion.div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <motion.div className="bg-white rounded-2xl shadow-xl p-8 w-11/12 max-w-2xl relative max-h-[80vh] overflow-y-auto" initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 50, opacity: 0 }}>
+                <button onClick={() => setSelectedSummary(null)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-700 transition"><X size={24}/></button>
+                <h3 className="text-2xl font-bold mb-4 text-gray-800">Full Summary</h3>
+                <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">{selectedSummary.summary}</p>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
     </>
   );
 }

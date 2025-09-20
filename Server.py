@@ -288,6 +288,7 @@ def stop_processing():
         if client_id in active_clients:
             # If you stored an AI process handle, terminate it here
             # Example: active_clients[client_id].terminate()
+            # But threading not possible without GPU. And the subprocessing also resource intensive.
             del active_clients[client_id]
             print(active_clients)
             return jsonify({"status": "Stopped AI processing for this client"}), 200
@@ -412,7 +413,7 @@ def update_summary_in_db(conn, cursor, patient_id, new_text, method="replace"):#
 if __name__ == "__main__":
     public_url = None
 
-    #comment these below lines if you don't want to use  ngrok
+    # #comment these below lines if you don't want to use  ngrok
     tunnel = ngrok.connect(5000)
     public_url = tunnel.public_url
 
