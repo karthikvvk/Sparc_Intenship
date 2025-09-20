@@ -1,5 +1,6 @@
 from Starter import *
-starter()
+starter()#Take care of All the dependencies like DB, Folders etc., before starting the Server.
+
 import time
 from flask import Flask, jsonify, request
 import mysql.connector
@@ -14,12 +15,14 @@ from pyngrok import ngrok
 
 # ---------- Load environment variables ----------
 load_dotenv(dotenv_path="./frontend/.env")
+default_pdf = os.getenv("PDF_DIR1")
+temp_pdf = os.getenv("PDF_DIR2")
 
+#Initialising app
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 
-default_pdf = os.getenv("PDF_DIR1")
-temp_pdf = os.getenv("PDF_DIR2")
+
 
 # MySQL DB config
 db_config = {
@@ -28,12 +31,14 @@ db_config = {
     'password': os.getenv("DB_PASSWORD"),
     'database': os.getenv("DB_NAME")
 }
+
+# Global state to track active clients
 active_clients = {}
 
 
 
-
-@app.route("/update_summary", methods=["POST"])
+# -------------------- ROUTES --------------------
+@app.route("/update_summary", methods=["POST"]) # Unified endpoint for replace, add, and merge operations.
 def update_summary():
     try:
         data = request.get_json(force=True)
@@ -65,9 +70,7 @@ def update_summary():
         if 'conn' in locals():
             conn.close()
 
-
-
-@app.route('/load_history', methods=['POST'])
+@app.route('/load_history', methods=['POST'])# loads specific patient's past summaries from DB
 def load_history():
     try:
         data = request.get_json()
@@ -97,10 +100,7 @@ def load_history():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
-
-# -------------------- ROUTES --------------------
-@app.route("/merge", methods=["POST"])
+@app.route("/merge", methods=["POST"])# Merge End-Point
 def merge_summary():
     conn = mysql.connector.connect(**db_config)
     cursor = conn.cursor()
@@ -120,7 +120,7 @@ def merge_summary():
         cursor.close()
         conn.close()
 
-@app.route("/start_summarisation", methods=["GET", "POST"])
+@app.route("/start_summarisation", methods=["GET", "POST"])# Summary's starting end-point
 def start_summarisation():
     client_id = request.remote_addr
     if active_clients.get(client_id, False):
@@ -139,13 +139,11 @@ def start_summarisation():
         cursor.close()
         conn.close()
 
-        # pdf upload via form-data
+        # using pdf upload via form-data(direct pdf upload)
         if request.content_type and request.content_type.startswith("multipart/form-data"):
-            # print("Handling form-data upload")
             patient_id = request.form.get("patientId", "")
             idea = request.form.get("idea", "")
             pdf_file = request.files.get("pdf")
-            # print(pdf_file)
             if not pdf_file:
                 return jsonify({"error": "PDF file required"}), 400
 
@@ -154,7 +152,7 @@ def start_summarisation():
 
             return handle_single_summarisation(patient_id, idea=idea, pdf=pdf, form="true")
 
-        # Handle JSON body
+        # Rest below is using the patient detail from DB
         try:
             data = request.get_json(force=True)
         except Exception:
@@ -167,7 +165,7 @@ def start_summarisation():
         pdf_value = str(data.get("pdf", "")).strip().lower()
 
         if pdf_value and pdf_value != "false":
-            # pdf is present/selected
+            #calls the handler for internlm + DB
             return handle_single_summarisation(
                 patient_id,
                 idea=data.get("idea", ""),
@@ -175,7 +173,7 @@ def start_summarisation():
                 form="false"
             )
         elif pdf_value and pdf_value == "false":
-            # pdf is present/selected
+            #calls the handler for only medgemma
             return handle_single_summarisation(
                 patient_id,
                 idea=data.get("idea", ""),
@@ -183,7 +181,7 @@ def start_summarisation():
                 form="false"
             )
 
-        # 🔴 FIX: ensure fallback return
+        #ensure fallback return
         return jsonify({"error": "Invalid pdf flag, must be 'true' or ''"}), 400
 
     except Exception as e:
@@ -191,7 +189,7 @@ def start_summarisation():
     finally:
         active_clients[client_id] = False
 
-@app.route("/replace", methods=["POST"])
+@app.route("/replace", methods=["POST"])# replace end-point
 def replace_summary():
     try:
         data = request.get_json(force=True)
@@ -219,7 +217,7 @@ def replace_summary():
         if 'conn' in locals():
             conn.close()
 
-@app.route("/add", methods=["POST"])
+@app.route("/add", methods=["POST"])# add this version end-point
 def add_summary():
     try:
         data = request.get_json(force=True)
@@ -247,9 +245,62 @@ def add_summary():
         if 'conn' in locals():
             conn.close()
 
+@app.route("/searchpatient", methods=["POST"])# search patient end-point
+def search_patient():
+    data = request.get_json(silent=True) or {}
+    query = data.get("query", "").strip()
+    if not query:
+        return jsonify({"error": "Query parameter is required"}), 400
+
+    try:
+        conn = mysql.connector.connect(**db_config)
+        cursor = conn.cursor(dictionary=True)
+
+        search_query = """
+            SELECT id, patient_name, report_summary
+            FROM sparrc_patient_info
+            WHERE patient_name LIKE %s OR id LIKE %s
+            LIMIT 10
+        """
+        like_pattern = f"%{query}%"
+        print("query", search_query, (like_pattern, like_pattern))
+        cursor.execute(search_query, (like_pattern, like_pattern))
+        results = cursor.fetchall()
+        for row in results:
+            summary = row.get("report_summary")
+            if summary:
+                # first 20 characters + ellipsis
+                row["report_summary"] = summary[:50] + ("..." if len(summary) > 20 else "")
+
+        print("results", results)
+        cursor.close()
+        conn.close()
+
+        return jsonify({"patients": results}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/stop", methods=["POST"])# stop current processing end-point
+def stop_processing():
+    client_id = request.remote_addr
+    print(active_clients)
+    try:
+        if client_id in active_clients:
+            # If you stored an AI process handle, terminate it here
+            # Example: active_clients[client_id].terminate()
+            del active_clients[client_id]
+            print(active_clients)
+            return jsonify({"status": "Stopped AI processing for this client"}), 200
+        else:
+            return jsonify({"status": "No active process for this client"}), 200
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+
 # -------------------- HELPERS --------------------
-def handle_bulk_summarisation():
-    """Summarise all patients with empty summary"""
+def handle_bulk_summarisation(): # Summarises all patients who have empty report_summary field.
     try:
         conn = mysql.connector.connect(**db_config)
         cursor = conn.cursor()
@@ -282,14 +333,13 @@ def handle_bulk_summarisation():
         cursor.close()
         conn.close()
 
-def handle_single_summarisation(patient_id, idea="", pdf="", form="true"):
-    # print("reached handle")
+def handle_single_summarisation(patient_id, idea="", pdf="", form="true"):# Summary for single patient based on doctor's requirement.
     if form == "true":
         #direct pdf upload
         summary = StartSummarize(path=pdf, idea=idea, form="true")
         summary = clean_summary_text(summary)
     elif pdf == "true":
-        #internlm + DB
+        #internlm(handles images) + DB(summarise using pdf path in db)
         conn = mysql.connector.connect(**db_config)
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM sparrc_patient_info WHERE id = %s", (patient_id,))
@@ -305,7 +355,7 @@ def handle_single_summarisation(patient_id, idea="", pdf="", form="true"):
         summary = clean_summary_text(summary)
 
     elif pdf == "false":
-        #only medgemma
+        #only medgemma (no image reading and pdf reading from anywhere)
         conn = mysql.connector.connect(**db_config)
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM sparrc_patient_info WHERE id = %s", (patient_id,))
@@ -314,15 +364,13 @@ def handle_single_summarisation(patient_id, idea="", pdf="", form="true"):
         conn.close()
         summary = StartSummarize(idea=idea, data=row, pdf="false")
         summary = clean_summary_text(summary)
-        # summary = "single two"
+        # summary = "single two" #use for testing faster without Ai
         return jsonify({"summary": summary, "idea": idea})
 
     
-    # summary = "single one"
     return jsonify({"summary": summary, "idea": idea})
 
-
-def update_summary_in_db(conn, cursor, patient_id, new_text, method="replace"):
+def update_summary_in_db(conn, cursor, patient_id, new_text, method="replace"):#handles the merge, add, replace operations finally in DB.
     cursor.execute("SELECT report_summary FROM sparrc_patient_info WHERE id = %s", (patient_id,))
     row = cursor.fetchone()
     existing_raw = row[0] if row else None
@@ -337,7 +385,7 @@ def update_summary_in_db(conn, cursor, patient_id, new_text, method="replace"):
             all_versions.append(new_text)
             combined_text = " ".join(all_versions)
             updated_summary = StartSummarize(combined_text)
-            # updated_summary = "merged one"
+            # updated_summary = "merged one" #use for faster testing without Ai
         else:
             updated_summary = new_text
 
@@ -362,21 +410,20 @@ def update_summary_in_db(conn, cursor, patient_id, new_text, method="replace"):
 
 
 if __name__ == "__main__":
-    # Open ngrok tunnel
     public_url = None
-    # tunnel = ngrok.connect(5000)
-    # public_url = tunnel.public_url
-    print("Tunnel URL:", public_url)
 
-    # Fallback if tunnel fails
+    #comment these below lines if you don't want to use  ngrok
+    tunnel = ngrok.connect(5000)
+    public_url = tunnel.public_url
+
+    # print("Tunnel URL:", public_url)# Use this to access the Flask app URL during development
+
+    # Fallback if tunnel fails. Falls to Localhost
     if not public_url:
         public_url = "http://127.0.0.1:5000"
 
-    # Save to .env
+    # Save to .env (This allow us to seperate/chain the development of Fronten and Backend. When chained both backend and frontend RESTARTS in same URL) USE in Deployment
     set_key("./frontend/.env", "VITE_API_URL", public_url)
 
     # Run Flask
     app.run(host="0.0.0.0", port=5000)
-
-
-

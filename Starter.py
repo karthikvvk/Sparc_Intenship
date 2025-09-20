@@ -1,3 +1,4 @@
+#This file is required in both deployment and devolopment phase.
 import os
 import subprocess
 import sys
@@ -72,10 +73,7 @@ def handle_model(mods):
         else:
             print(f"[✓] Model already present: {dest_path}")
 
-
-
-
-
+# ===================== Table Definitions =====================
 TABLES_SQL = [
     # Paste all your table SQL definitions here exactly as in your message
     """CREATE TABLE IF NOT EXISTS sparrc_appointments (
@@ -214,6 +212,7 @@ TABLES_SQL = [
         KEY idx_doctor_id (doctor_id)
     )"""
 ]
+
 
 # ===================== Main Starter Function =====================
 def starter():

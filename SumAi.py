@@ -2,27 +2,26 @@ import os
 from llama_cpp import Llama
 from dotenv import load_dotenv
 from Cleaner import clean_summary_text
-from processor import extract_text_from_url  # assuming you keep the same function
+from processor import extract_text_from_url
 
 # ---------- Load environment variables ----------
 load_dotenv(dotenv_path="./frontend/.env")
 aipath = os.getenv("AI_PATH")
 
-# ---------- Model path (Intern-S1 only) ----------
 intern_s1 = os.path.join(aipath, "Intern-S1-mini-Q8_0.gguf")
 medgemma = os.path.join(aipath, "medgemma-4b-it-Q4_K_M.gguf")
+
 # ---------- Settings ----------
 maxtokens = 512
 temp = 0.5
 topp = 0.9
 repeatpenalty = 1.05
 
-# Global cache (single model)
+# Global cache 
 llm_instance = None
 
 
-def get_model(model="Intern-S1-mini-Q8_0.gguf"):
-    """Always load Intern-S1 (cached)."""
+def get_model(model="Intern-S1-mini-Q8_0.gguf"):# Default to internlm
     global llm_instance
     if model == "medgemma-4b-it-Q4_K_M.gguf":
         llm_instance = Llama(
@@ -33,6 +32,7 @@ def get_model(model="Intern-S1-mini-Q8_0.gguf"):
             n_gpu_layers=-1             # use GPU acceleration fully
         )
     else:
+        #use medgemma
         if not os.path.exists(intern_s1):
             raise FileNotFoundError(f"Intern-S1 model not found at {intern_s1}")
         llm_instance = Llama(
@@ -61,6 +61,7 @@ Patient Information:
 Doctor's Notes: {idea if idea else "None"}
 """
     try:
+        #calling the model for actual summary prompt
         prt = llm.create_completion(
             prompt=prompt,
             max_tokens=maxtokens,
@@ -76,16 +77,14 @@ Doctor's Notes: {idea if idea else "None"}
 
 
 def StartSummarize(path="", idea="", data="", form="false", pdf="false"):
-    # print("reached summary")
     if form == "true" or pdf == "true":
         ext = extract_text_from_url(path)
-        images, text = ext["images"], ext["text"]
+        images, text = ext["images"], ext["text"]# Extracted text and images
 
-        inp = clean_summary_text(text)
-        # print(inp)
+        inp = clean_summary_text(text)# Cleaned text for summarization
         llm = get_model()
 
-        print(f"\nUsing Intern-S1 (image support = {len(images) > 0})\n")
+        # print(f"\nUsing Intern-S1 (image support = {len(images) > 0})\n")#outputs the models being used
 
         image_text = describe_images(images) if images else ""
 
@@ -96,11 +95,11 @@ def StartSummarize(path="", idea="", data="", form="false", pdf="false"):
         partial_summaries = []
         for idx, ch in enumerate(chunks):
             full_chunk = f"{ch}\n\nImage Information:\n{image_text}"
-            # print(f"Processing chunk {idx+1}/{len(chunks)}...")
+            # print(f"Processing chunk {idx+1}/{len(chunks)}...")# chunking progress display
             summary = summarize_chunk(full_chunk, idea, llm)
             partial_summaries.append(summary)
 
-        # Merge summaries into final
+        # Combine chunked summaries into final
         final_input = "\n".join(partial_summaries)
         final_summary = summarize_chunk(final_input, idea, llm)
     else:
@@ -113,7 +112,6 @@ def StartSummarize(path="", idea="", data="", form="false", pdf="false"):
         #     data = str(data)
 
         try:
-            # Proper chat-style completion
             prt = llm.create_chat_completion(
                 messages=[
                     {"role": "system", "content": "You are a medical report summarizer."},

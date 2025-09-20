@@ -2,9 +2,9 @@ from pdf2image import convert_from_path
 import pytesseract
 import tempfile
 import os
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, as_completed# fro multi threaded extraction
 import multiprocessing
-import fitz  # PyMuPDF
+import fitz  # PyMuPDF package
 
 
 def _ocr_page(idx, img, lang):
@@ -49,7 +49,7 @@ def extract_text_from_url(pdf_path, output_dir="./extracted", dpi=300, lang="eng
                 img.save(full_img_path)
                 all_images.append(full_img_path)
 
-            # Extract additional embedded images (optional)
+            # #Extract additional embedded images (optional)
             # for img_index, img_meta in enumerate(page.get_images(full=True)):
             #     xref = img_meta[0]
             #     pix = fitz.Pixmap(doc, xref)
