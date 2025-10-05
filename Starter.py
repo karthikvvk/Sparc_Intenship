@@ -31,17 +31,25 @@ def install_packages(packages):
 # ===================== Function: Download Models =====================
 def download_file(url, dest_path):
     import requests
+    from tqdm import tqdm
     try:
         with requests.get(url, stream=True, allow_redirects=True) as r:
             r.raise_for_status()
-            with open(dest_path, "wb") as f:
-                for chunk in r.iter_content(chunk_size=8192):
+            total_size = int(r.headers.get("content-length", 0))
+            block_size = 8192
+
+            with open(dest_path, "wb") as f, tqdm(
+                total=total_size, unit="B", unit_scale=True, desc=dest_path, ascii=True
+            ) as bar:
+                for chunk in r.iter_content(chunk_size=block_size):
                     if chunk:
                         f.write(chunk)
+                        bar.update(len(chunk))
         return True
     except Exception as e:
         print(f"[!] Download error: {e}")
         return False
+
 
 def handle_model(mods):
     os.makedirs("./models", exist_ok=True)
@@ -219,6 +227,8 @@ def starter():
     from dotenv import load_dotenv
     from fpdf import FPDF
     import mysql.connector
+    import requests
+    from tqdm import tqdm
 
     load_dotenv(dotenv_path="./frontend/.env")
     def ensure_mysql_connector():
@@ -380,7 +390,7 @@ if __name__ == "__main__":
     install_packages(packages)
 
     handle_model({
-        "Intern-S1-mini-Q8_0.gguf": "https://huggingface.co/internlm/Intern-S1-mini-GGUF/blob/main/Q8_0/Intern-S1-mini-Q8_0.gguf",
+        "Intern-S1-mini-Q8_0.gguf": "https://huggingface.co/internlm/Intern-S1-mini-GGUF/resolve/main/Q8_0/Intern-S1-mini-Q8_0.gguf?download=true",
         "medgemma-4b-it-Q4_K_M.gguf": "https://huggingface.co/lmstudio-community/medgemma-4b-it-GGUF/resolve/main/medgemma-4b-it-Q4_K_M.gguf",
         "mmproj-model-F16.gguf": "https://huggingface.co/lmstudio-community/medgemma-4b-it-GGUF/resolve/main/mmproj-model-F16.gguf",
         "mmproj-Intern-S1-mini-Q8_0.gguf": "https://huggingface.co/internlm/Intern-S1-mini-GGUF/resolve/main/Q8_0/mmproj-Intern-S1-mini-Q8_0.gguf"

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Brain, AlertTriangle, FileText, Activity, History, Upload, Search, List, X } from 'lucide-react';
+import { User, Brain, AlertTriangle, FileText, Activity, History, Upload, Search, List, X, BarChart2, BookOpen } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // --- TYPE DEFINITIONS ---
@@ -7,6 +7,13 @@ interface SummaryData {
   summary: string;
   idea?: string | null;
 }
+
+// A simple type for prediction data for now
+interface PredictionData {
+    prediction: string;
+    confidence?: number;
+}
+
 
 interface PatientDetails {
   id: string;
@@ -174,17 +181,31 @@ const SearchPage = ({ onPatientSelect, onPdfUpload, searchResults, onSearch }: {
 
 
 // ============================================================================
-// --- 2. SUMMARY PAGE COMPONENT ---
+// --- 2. SUMMARY & PREDICTION PAGE COMPONENT ---
 // ============================================================================
-const SummaryPage = ({ patient, initialPdfFile, onBackToSearch }: {
+const ActionPage = ({
+  patient,
+  initialPdfFile,
+  onBackToSearch,
+  activeTab,
+  isGeneratingSummary,
+  setIsGeneratingSummary,
+  isGeneratingPrediction,
+  setIsGeneratingPrediction,
+}: {
   patient: PatientDetails | null;
   initialPdfFile: File | null;
   onBackToSearch: () => void;
+  activeTab: 'summary' | 'prediction';
+  isGeneratingSummary: boolean;
+  setIsGeneratingSummary: (isGenerating: boolean) => void;
+  isGeneratingPrediction: boolean;
+  setIsGeneratingPrediction: (isGenerating: boolean) => void;
 }) => {
   const [idea, setThoughts] = useState('');
   const [pdfFile, setPdfFile] = useState<File | null>(initialPdfFile);
-  const [isGenerating, setIsGenerating] = useState(false);
   const [summaryData, setSummaryData] = useState<SummaryData | null>(null);
+  const [predictionData, setPredictionData] = useState<PredictionData | null>(null); // State for prediction result
   const [summaryHistory, setSummaryHistory] = useState<SummaryData[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [selectedSummary, setSelectedSummary] = useState<SummaryData | null>(null);
@@ -193,24 +214,28 @@ const SummaryPage = ({ patient, initialPdfFile, onBackToSearch }: {
   const [historyPatientId, setHistoryPatientId] = useState('');
   const [areButtonsEnabled, setAreButtonsEnabled] = useState(false);
   const [canAdd, setCanAdd] = useState(false);
-  const [useSavedPdf, setUseSavedPdf] = useState(false);
+  const [useSavedPdf, setUseSavedPdf] = useState(true);
+  const changePdfInputRef = useRef<HTMLInputElement>(null);
 
   const patientId = patient?.id || '';
   
   useEffect(() => {
-    // Pre-fill history search with current patient ID
     if (patientId) {
       setHistoryPatientId(patientId);
+      setAreButtonsEnabled(true);
+      loadHistory(patientId);
     }
   }, [patientId]);
 
-
-  useEffect(() => {
-    if(patientId) {
-        setAreButtonsEnabled(true);
-        loadHistory(patientId); // Load history when patient is selected
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files && event.target.files[0]) {
+        setPdfFile(event.target.files[0]);
+        setSummaryData(null);
+        setPredictionData(null); // Reset prediction data as well
+        setAreButtonsEnabled(false);
+        setCanAdd(false);
     }
-  }, [initialPdfFile, patientId]);
+  };
   
   const validateForm = () => {
     if (!patientId && !pdfFile) {
@@ -220,83 +245,65 @@ const SummaryPage = ({ patient, initialPdfFile, onBackToSearch }: {
     return true;
   };
 
-  const loadHistory = async (pid?: string) => {
-    const effectiveId = pid || historyPatientId || patientId;
-    if (!effectiveId.trim()) {
-        alert("Please provide a Patient ID to load history.");
-        return;
-    };
-
+  const loadHistory = async (pid: string) => {
+    if (!pid.trim()) return;
     try {
       const response = await fetch(`${API_URL}/load_history`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ patientId: effectiveId }),
+        body: JSON.stringify({ patientId: pid }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Failed to load history");
       setSummaryHistory(result.history || []);
     } catch (err) {
       console.error("Load history error:", err);
-      if (err instanceof Error) {
-        alert(`Failed to load history: ${err.message}`);
-      } else {
-        alert("Failed to load history: Unknown error");
-      }
     }
   };
 
   const updateSummary = async (method: "replace" | "merge" | "add") => {
     if (!patientId || !summaryData) return;
+    setIsMerging(method === "merge");
     try {
       const response = await fetch(`${API_URL}/update_summary`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           patientId,
-          idea: idea && idea.trim() !== "" ? idea : summaryData.idea,
+          idea: idea.trim() ? idea : summaryData.idea,
           summary: summaryData.summary,
           method,
         }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Update failed");
-
-      // --- This is the key change: reload history after successful update ---
       await loadHistory(patientId);
-      // -------------------------------------------------------------------
-
-      const cleanSummary: SummaryData = {
-        summary: result.summary,
-        idea: result.idea ?? idea ?? summaryData.idea ?? null,
-      };
-      if (method === "replace" || method === "merge") {
-        setSummaryData(cleanSummary);
+      if (method !== "add") {
+        setSummaryData({ summary: result.summary, idea: result.idea ?? idea ?? summaryData.idea ?? null });
       }
-      if (method === "add") {
+      if (method === "add" || method === "replace") {
         setCanAdd(false);
       }
-      if (method === "replace") {
-        setAreButtonsEnabled(false);
-        setCanAdd(false);
-      }
+      if (method === "replace") setAreButtonsEnabled(false);
     } catch (err) {
       console.error(`${method} error:`, err);
     } finally {
-      if (method === "merge") setIsMerging(false);
+      setIsMerging(false);
     }
   };
 
-  const handleReplace = () => updateSummary("replace");
-  const handleMerge = () => {
-    setIsMerging(true);
-    updateSummary("merge");
-  };
-  const handleAddVersion = () => updateSummary("add");
-
-  const generateSummary = async () => {
+  const handleGenerate = async () => {
     if (!validateForm()) return;
-    setIsGenerating(true);
+    
+    if (activeTab === 'summary') {
+      await generateSummary();
+    } else {
+      await generatePrediction();
+    }
+  };
+  
+  const generateSummary = async () => {
+    setIsGeneratingSummary(true);
     try {
       let body: FormData | string;
       let headers: HeadersInit = {};
@@ -315,69 +322,100 @@ const SummaryPage = ({ patient, initialPdfFile, onBackToSearch }: {
       setSummaryData({ summary: result.summary, idea: result.idea ?? (idea.trim() ? idea : null) });
       setCanAdd(true);
     } catch (err) {
-      console.error("Generate error:", err);
+      console.error("Generate summary error:", err);
     } finally {
-      setIsGenerating(false);
+      setIsGeneratingSummary(false);
+    }
+  };
+  
+  const generatePrediction = async () => {
+    setIsGeneratingPrediction(true);
+    // This is a placeholder for the actual prediction API call
+    try {
+        await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate network delay
+        setPredictionData({
+            prediction: "Based on the provided data, there is a moderate risk of developing Type 2 Diabetes within the next 5 years.",
+            confidence: 0.75
+        });
+    } catch(err) {
+        console.error("Generate prediction error:", err);
+    } finally {
+        setIsGeneratingPrediction(false);
     }
   };
 
+  const isGenerating = isGeneratingSummary || isGeneratingPrediction;
+  
+  // Determine button state based on the active tab
+  const isButtonDisabled = activeTab === 'summary' 
+    ? isGeneratingSummary || summaryData !== null
+    : isGeneratingPrediction || predictionData !== null;
+    
+  const buttonText = activeTab === 'summary' 
+    ? (isGeneratingSummary ? 'Generating Summary...' : 'Generate AI Summary')
+    : (isGeneratingPrediction ? 'Generating Prediction...' : 'Generate AI Prediction');
+
+  const ButtonIcon = activeTab === 'summary' ? Brain : BarChart2;
+
   return (
     <>
-      {/* History Button */}
-       <div className="fixed top-6 right-6 z-20">
-          <button
-            onClick={() => setShowHistory(true)}
-            className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-xl shadow-lg hover:bg-blue-700 transition transform hover:scale-105"
-          >
-            <History className="w-5 h-5" />
-            <span>View History</span>
-          </button>
-        </div>
+      <div className="fixed top-6 right-6 z-20">
+        <button
+          onClick={() => setShowHistory(true)}
+          className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-xl shadow-lg hover:bg-blue-700 transition transform hover:scale-105"
+        >
+          <History className="w-5 h-5" />
+          <span>View History</span>
+        </button>
+      </div>
 
       <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl p-8 mb-8 border border-white/20">
         <div className="space-y-6">
           {patient && (
             <div className='p-4 bg-blue-100 border-l-4 border-blue-500 rounded-r-lg'>
-                <p className='text-gray-600 text-sm'>Selected Patient</p>
-                <p className='text-lg font-semibold text-gray-800'>{patient.patient_name} ({patient.id})</p>
+              <p className='text-gray-600 text-sm'>Selected Patient</p>
+              <p className='text-lg font-semibold text-gray-800'>{patient.patient_name} ({patient.id})</p>
             </div>
           )}
           {pdfFile && (
-              <div className='p-4 bg-green-100 border-l-4 border-green-500 rounded-r-lg'>
+            <div className='p-4 bg-green-100 border-l-4 border-green-500 rounded-r-lg flex items-center justify-between'>
+              <div>
                 <p className='text-gray-600 text-sm'>Uploaded PDF</p>
                 <p className="mt-1 text-green-800 font-medium">{pdfFile.name}</p>
               </div>
+              <button
+                onClick={() => changePdfInputRef.current?.click()}
+                className="bg-green-600 text-white text-sm px-3 py-1 rounded-lg hover:bg-green-700 transition"
+              >
+                Change PDF
+              </button>
+              <input type="file" ref={changePdfInputRef} onChange={handleFileChange} accept="application/pdf" className="hidden"/>
+            </div>
           )}
-          
           {!pdfFile && patient && (
-            <>
-              <div className="flex items-center justify-between pt-4">
-                <label htmlFor="useSavedPdf" className="text-lg font-semibold text-gray-700">Use saved PDF from DB</label>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input type="checkbox" id="useSavedPdf" className="sr-only peer" checked={useSavedPdf} onChange={(e) => setUseSavedPdf(e.target.checked)}/>
-                  <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-blue-600 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
-                </label>
-              </div>
-              <div>
-                <label className="flex items-center text-lg font-semibold text-gray-700 mb-3"><FileText className="w-5 h-5 mr-2" />Your Thoughts</label>
-                <textarea value={idea} onChange={(e) => setThoughts(e.target.value)} rows={4} className="w-full p-3 rounded-xl border-2" placeholder="Add clinical notes..."/>
-              </div>
-            </>
+            <div className="flex items-center justify-between pt-4">
+              <label htmlFor="useSavedPdf" className="text-lg font-semibold text-gray-700">Use saved PDF from DB</label>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" id="useSavedPdf" className="sr-only peer" checked={useSavedPdf} onChange={(e) => setUseSavedPdf(e.target.checked)}/>
+                <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-blue-600 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
+              </label>
+            </div>
           )}
-
+          <div>
+            <label className="flex items-center text-lg font-semibold text-gray-700 mb-3"><FileText className="w-5 h-5 mr-2" />Your Thoughts</label>
+            <textarea value={idea} onChange={(e) => setThoughts(e.target.value)} rows={4} className="w-full p-3 rounded-xl border-2" placeholder="Add clinical notes..."/>
+          </div>
           <button
-            onClick={generateSummary}
-            disabled={isGenerating || summaryData !== null}
+            onClick={handleGenerate}
+            disabled={isButtonDisabled}
             className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 disabled:from-gray-400 text-white font-semibold py-4 rounded-xl flex items-center justify-center space-x-2"
           >
-            {isGenerating ? <LoadingSpinner text="Generating..." /> : (
-              <><Brain className="w-5 h-5" /><span>Generate AI Summary</span></>
-            )}
+            {isGenerating ? <LoadingSpinner text={buttonText} /> : <><ButtonIcon className="w-5 h-5" /><span>{buttonText}</span></>}
           </button>
         </div>
       </div>
       
-      {summaryData && (
+      {summaryData && activeTab === 'summary' && (
         <div className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl p-8 border border-white/20 animate-in slide-in-from-bottom duration-700">
             <div className="flex items-center mb-6">
               <Activity className="w-8 h-8 text-blue-600 mr-3" />
@@ -387,105 +425,119 @@ const SummaryPage = ({ patient, initialPdfFile, onBackToSearch }: {
               <p className="text-gray-700 leading-relaxed text-lg">{summaryData.summary}</p>
             </div>
             <div className="flex justify-end space-x-4 mt-6">
-              <button
-                onClick={handleReplace}
-                disabled={!areButtonsEnabled}
-                className={`px-6 py-3 rounded-lg font-medium transition ${!areButtonsEnabled ? 'bg-gray-400 cursor-not-allowed text-gray-200' : 'bg-red-600 text-white hover:bg-red-700'}`}
-              >
-                Replace
-              </button>
-              <button
-                onClick={handleMerge}
-                disabled={!areButtonsEnabled || isMerging}
-                className={`px-6 py-3 rounded-lg font-medium transition flex items-center justify-center space-x-2 ${
-                  !areButtonsEnabled || isMerging
-                    ? 'bg-gray-400 cursor-not-allowed text-gray-200'
-                    : 'bg-green-600 text-white hover:bg-green-700'
-                }`}
-              >
-                {isMerging ? <LoadingSpinner text="Merging..." /> : <span>Merge</span>}
-              </button>
-
-              <button
-                onClick={handleAddVersion}
-                disabled={!areButtonsEnabled || !canAdd}
-                className={`px-6 py-3 rounded-lg font-medium transition ${
-                  !areButtonsEnabled || !canAdd
-                    ? 'bg-gray-400 cursor-not-allowed text-gray-200'
-                    : 'bg-blue-600 text-white hover:bg-blue-700'
-                }`}
-              >
-                Add This Version
-              </button>
+              <button onClick={() => updateSummary("replace")} disabled={!areButtonsEnabled} className="px-6 py-3 rounded-lg font-medium transition bg-red-600 text-white hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed">Replace</button>
+              <button onClick={() => updateSummary("merge")} disabled={!areButtonsEnabled || isMerging} className="px-6 py-3 rounded-lg font-medium transition flex items-center justify-center space-x-2 bg-green-600 text-white hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed">{isMerging ? <LoadingSpinner text="Merging..." /> : 'Merge'}</button>
+              <button onClick={() => updateSummary("add")} disabled={!areButtonsEnabled || !canAdd} className="px-6 py-3 rounded-lg font-medium transition bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed">Add This Version</button>
             </div>
-          </div>
+        </div>
+      )}
+      
+      {predictionData && activeTab === 'prediction' && (
+        <div className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl p-8 border border-white/20 animate-in slide-in-from-bottom duration-700">
+            <div className="flex items-center mb-6">
+              <BarChart2 className="w-8 h-8 text-purple-600 mr-3" />
+              <h2 className="text-2xl font-bold text-gray-800">AI Generated Prediction</h2>
+            </div>
+            <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl p-6 border-l-4 border-purple-500">
+              <p className="text-gray-700 leading-relaxed text-lg">{predictionData.prediction}</p>
+              {predictionData.confidence && (
+                <div className="mt-4 text-right font-semibold text-purple-800">
+                    Confidence: {(predictionData.confidence * 100).toFixed(0)}%
+                </div>
+              )}
+            </div>
+        </div>
       )}
 
       <div className="fixed bottom-6 left-6">
-        <button 
-          onClick={onBackToSearch} 
-          disabled={isGenerating}   
-          className={`px-4 py-2 rounded-lg shadow 
-            ${isGenerating 
-              ? "bg-gray-400 cursor-not-allowed text-gray-200" 
-              : "bg-gray-600 text-white hover:bg-gray-700"}`}
-        >
-          Back to Search
-        </button>
-
+        <button onClick={onBackToSearch} disabled={isGenerating} className="px-4 py-2 rounded-lg shadow bg-gray-600 text-white hover:bg-gray-700 disabled:bg-gray-400 disabled:cursor-not-allowed">Back to Patient Searching</button>
       </div>
 
-      {/* History and Full Summary Modals */}
-       <AnimatePresence>
-          {showHistory && (
-            <motion.div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <motion.div className="bg-white rounded-2xl shadow-xl p-6 w-11/12 max-w-3xl relative" initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}>
-                <button onClick={() => setShowHistory(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-700 transition"><X size={24}/></button>
-                <h3 className="text-2xl font-bold mb-4 text-gray-800">Summary History</h3>
-
-                <div className="max-h-[60vh] overflow-y-auto space-y-3 pr-2">
-                 {summaryHistory.length > 0 ? summaryHistory.map((item, idx) => (
-                    <div key={idx} className="bg-white rounded-xl p-4 shadow-sm border flex justify-between items-center">
-                      <div>
-                        <p className="font-semibold text-gray-600">Version {summaryHistory.length - idx}</p>
-                        <p className="text-gray-700 text-sm line-clamp-2 mt-1">{item.summary}</p>
-                      </div>
-                      <button onClick={() => setSelectedSummary(item)} className="ml-4 flex-shrink-0 bg-blue-100 text-blue-800 px-4 py-2 rounded-lg hover:bg-blue-200 text-sm font-semibold">View Full</button>
+      <AnimatePresence>
+        {showHistory && (
+          <motion.div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <motion.div className="bg-white rounded-2xl shadow-xl p-6 w-11/12 max-w-3xl relative" initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}>
+              <button onClick={() => setShowHistory(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-700 transition"><X size={24}/></button>
+              <h3 className="text-2xl font-bold mb-4 text-gray-800">Summary History</h3>
+              <div className="max-h-[60vh] overflow-y-auto space-y-3 pr-2">
+               {summaryHistory.length > 0 ? summaryHistory.map((item, idx) => (
+                  <div key={idx} className="bg-white rounded-xl p-4 shadow-sm border flex justify-between items-center">
+                    <div>
+                      <p className="font-semibold text-gray-600">Version {summaryHistory.length - idx}</p>
+                      <p className="text-gray-700 text-sm line-clamp-2 mt-1">{item.summary}</p>
                     </div>
-                  )) : (
-                    <div className="text-center py-8 text-gray-500">
-                        <p>No history found for this patient.</p>
-                    </div>
-                  )}
-                </div>
-              </motion.div>
+                    <button onClick={() => setSelectedSummary(item)} className="ml-4 flex-shrink-0 bg-blue-100 text-blue-800 px-4 py-2 rounded-lg hover:bg-blue-200 text-sm font-semibold">View Full</button>
+                  </div>
+                )) : <div className="text-center py-8 text-gray-500"><p>No history found for this patient.</p></div>}
+              </div>
             </motion.div>
-          )}
-        </AnimatePresence>
-        <AnimatePresence>
-          {selectedSummary && (
-            <motion.div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <motion.div className="bg-white rounded-2xl shadow-xl p-8 w-11/12 max-w-2xl relative max-h-[80vh] overflow-y-auto" initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 50, opacity: 0 }}>
-                <button onClick={() => setSelectedSummary(null)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-700 transition"><X size={24}/></button>
-                <h3 className="text-2xl font-bold mb-4 text-gray-800">Full Summary</h3>
-                <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">{selectedSummary.summary}</p>
-              </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {selectedSummary && (
+          <motion.div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <motion.div className="bg-white rounded-2xl shadow-xl p-8 w-11/12 max-w-2xl relative max-h-[80vh] overflow-y-auto" initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 50, opacity: 0 }}>
+              <button onClick={() => setSelectedSummary(null)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-700 transition"><X size={24}/></button>
+              <h3 className="text-2xl font-bold mb-4 text-gray-800">Full Summary</h3>
+              <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">{selectedSummary.summary}</p>
             </motion.div>
-          )}
-        </AnimatePresence>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   );
 }
 
 
 // ============================================================================
-// --- 3. MAIN APP COMPONENT ---
+// --- 3. NAVIGATION COMPONENT ---
+// ============================================================================
+
+const ModeSwitch = ({ activeTab, onTabChange, disabled }: {
+  activeTab: 'summary' | 'prediction',
+  onTabChange: (tab: 'summary' | 'prediction') => void,
+  disabled: boolean
+}) => {
+  const activeClasses = "bg-white text-blue-600 shadow-md";
+  const inactiveClasses = "bg-transparent text-white/80 hover:bg-white/20";
+
+  return (
+    <div className="flex justify-center mb-8">
+      <div className={`bg-blue-600/50 backdrop-blur-sm p-1 rounded-xl flex items-center space-x-1 transition ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}>
+        <button
+          onClick={() => onTabChange('summary')}
+          disabled={disabled}
+          className={`px-6 py-2 rounded-lg font-semibold transition-all duration-300 flex items-center space-x-2 ${activeTab === 'summary' ? activeClasses : inactiveClasses}`}
+        >
+          <BookOpen size={16} />
+          <span>Summary</span>
+        </button>
+        <button
+          onClick={() => onTabChange('prediction')}
+          disabled={disabled}
+          className={`px-6 py-2 rounded-lg font-semibold transition-all duration-300 flex items-center space-x-2 ${activeTab === 'prediction' ? activeClasses : inactiveClasses}`}
+        >
+          <BarChart2 size={16} />
+          <span>Prediction</span>
+        </button>
+      </div>
+    </div>
+  );
+};
+
+
+// ============================================================================
+// --- 4. MAIN APP COMPONENT ---
 // ============================================================================
 function App() {
   const [view, setView] = useState<'search' | 'summary'>('search');
+  const [activeTab, setActiveTab] = useState<'summary' | 'prediction'>('summary');
   const [patientDetails, setPatientDetails] = useState<PatientDetails[]>([]);
   const [selectedPatient, setSelectedPatient] = useState<PatientDetails | null>(null);
   const [uploadedPdf, setUploadedPdf] = useState<File | null>(null);
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false); // State for summary
+  const [isGeneratingPrediction, setIsGeneratingPrediction] = useState(false); // State for prediction
   const API_URL = import.meta.env.VITE_API_URL;
 
   const handleSearch = async (query: string) => {
@@ -507,12 +559,14 @@ function App() {
   const handlePatientSelect = (patient: PatientDetails) => {
     setSelectedPatient(patient);
     setUploadedPdf(null);
+    setActiveTab('summary');
     setView('summary');
   };
   
   const handlePdfUpload = (file: File) => {
     setUploadedPdf(file);
     setSelectedPatient(null);
+    setActiveTab('summary');
     setView('summary');
   }
 
@@ -522,6 +576,8 @@ function App() {
     setUploadedPdf(null);
     setPatientDetails([]);
   };
+  
+  const isAnyGenerationRunning = isGeneratingSummary || isGeneratingPrediction;
 
   return (
     <div className="min-h-screen bg-cover bg-center relative" style={{ backgroundImage: `url('https://www.sparrc.com/wp-content/uploads/2023/08/abt-us.jpg')`, backgroundAttachment: 'fixed' }}>
@@ -535,7 +591,26 @@ function App() {
         </div>
 
         {view === 'search' && <SearchPage onPatientSelect={handlePatientSelect} onPdfUpload={handlePdfUpload} searchResults={patientDetails} onSearch={handleSearch} />}
-        {view === 'summary' && <SummaryPage patient={selectedPatient} initialPdfFile={uploadedPdf} onBackToSearch={handleBackToSearch} />}
+        
+        {view === 'summary' && (
+          <>
+            <ModeSwitch 
+              activeTab={activeTab} 
+              onTabChange={setActiveTab} 
+              disabled={isAnyGenerationRunning} 
+            />
+            <ActionPage
+              patient={selectedPatient}
+              initialPdfFile={uploadedPdf}
+              onBackToSearch={handleBackToSearch}
+              activeTab={activeTab}
+              isGeneratingSummary={isGeneratingSummary}
+              setIsGeneratingSummary={setIsGeneratingSummary}
+              isGeneratingPrediction={isGeneratingPrediction}
+              setIsGeneratingPrediction={setIsGeneratingPrediction}
+            />
+          </>
+        )}
         
         <div className="text-center mt-12 text-gray-500">
           <p>© 2025 MediSummary AI</p>
