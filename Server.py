@@ -414,8 +414,8 @@ if __name__ == "__main__":
     public_url = None
 
     # #comment these below lines if you don't want to use  ngrok
-    # tunnel = ngrok.connect(5000)
-    # public_url = tunnel.public_url
+    tunnel = ngrok.connect(5000)
+    public_url = tunnel.public_url
 
     # print("Tunnel URL:", public_url)# Use this to access the Flask app URL during development
 
