@@ -32,6 +32,44 @@ const LoadingSpinner = ({ text }: { text: string }) => (
   </>
 );
 
+// Helper: parse tag-based summary strings with <heading> and <point> per-line
+const renderTaggedSummary = (summary: string | undefined | null) => {
+  if (!summary) return null;
+  const lines = summary.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  type Section = { heading: string; points: string[] };
+  const sections: Section[] = [];
+
+  for (const ln of lines) {
+    const hMatch = ln.match(/^<heading>(.*?)<\/heading>$/i);
+    const pMatch = ln.match(/^<point>(.*?)<\/point>$/i);
+    if (hMatch) {
+      sections.push({ heading: hMatch[1].trim(), points: [] });
+    } else if (pMatch) {
+      if (sections.length === 0) sections.push({ heading: 'Details', points: [] });
+      sections[sections.length - 1].points.push(pMatch[1].trim());
+    } else {
+      // fallback: treat as a point
+      if (sections.length === 0) sections.push({ heading: 'Details', points: [] });
+      sections[sections.length - 1].points.push(ln);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      {sections.map((sec, idx) => (
+        <div key={idx}>
+          <div className="text-blue-700 font-semibold mb-2">{sec.heading}</div>
+          <ul className="list-disc list-inside text-gray-700">
+            {sec.points.map((pt, i) => (
+              <li key={i} className="leading-relaxed">{pt}</li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 
 // ============================================================================
 // --- 1. SEARCH PAGE COMPONENT ---
@@ -214,7 +252,7 @@ const ActionPage = ({
   const [historyPatientId, setHistoryPatientId] = useState('');
   const [areButtonsEnabled, setAreButtonsEnabled] = useState(false);
   const [canAdd, setCanAdd] = useState(false);
-  const [useSavedPdf, setUseSavedPdf] = useState(true);
+  const [useSavedPdf, setUseSavedPdf] = useState(false);
   const changePdfInputRef = useRef<HTMLInputElement>(null);
 
   const patientId = patient?.id || '';
@@ -422,7 +460,7 @@ const ActionPage = ({
               <h2 className="text-2xl font-bold text-gray-800">AI Generated Summary</h2>
             </div>
             <div className="bg-gradient-to-r from-blue-50 to-cyan-50 rounded-xl p-6 border-l-4 border-blue-500">
-              <p className="text-gray-700 leading-relaxed text-lg">{summaryData.summary}</p>
+              <div className="text-gray-700 leading-relaxed text-lg">{renderTaggedSummary(summaryData.summary)}</div>
             </div>
             <div className="flex justify-end space-x-4 mt-6">
               <button onClick={() => updateSummary("replace")} disabled={!areButtonsEnabled} className="px-6 py-3 rounded-lg font-medium transition bg-red-600 text-white hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed">Replace</button>
@@ -450,7 +488,7 @@ const ActionPage = ({
       )}
 
       <div className="fixed bottom-6 left-6">
-        <button onClick={onBackToSearch} disabled={isGenerating} className="px-4 py-2 rounded-lg shadow bg-gray-600 text-white hover:bg-gray-700 disabled:bg-gray-400 disabled:cursor-not-allowed">Back to Patient Searching</button>
+        <button onClick={onBackToSearch} disabled={isGenerating} className="px-4 py-2 rounded-lg shadow bg-gray-600 text-white hover:bg-gray-700 disabled:bg-gray-400 disabled:cursor-not-allowed">Back to Search</button>
       </div>
 
       <AnimatePresence>
@@ -480,7 +518,7 @@ const ActionPage = ({
             <motion.div className="bg-white rounded-2xl shadow-xl p-8 w-11/12 max-w-2xl relative max-h-[80vh] overflow-y-auto" initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 50, opacity: 0 }}>
               <button onClick={() => setSelectedSummary(null)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-700 transition"><X size={24}/></button>
               <h3 className="text-2xl font-bold mb-4 text-gray-800">Full Summary</h3>
-              <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">{selectedSummary.summary}</p>
+              <div className="text-gray-700 whitespace-pre-wrap leading-relaxed">{renderTaggedSummary(selectedSummary.summary)}</div>
             </motion.div>
           </motion.div>
         )}

@@ -366,10 +366,22 @@ def handle_single_summarisation(patient_id, idea="", pdf="", form="true"):# Summ
         summary = StartSummarize(idea=idea, data=row, pdf="false")
         summary = clean_summary_text(summary)
         # summary = "single two" #use for testing faster without Ai
-        return jsonify({"summary": summary, "idea": idea})
+
+        structured_data = print_structured_summary(summary)
+        return jsonify({
+            "summary": structured_data["formatted_summary"],
+            "structured": structured_data["structured"],
+            "idea": idea
+        })
+
 
     
-    return jsonify({"summary": summary, "idea": idea})
+    structured_data = print_structured_summary(summary)
+    return jsonify({
+        "summary": structured_data["formatted_summary"],
+        "structured": structured_data["structured"],
+        "idea": idea
+    })
 
 def update_summary_in_db(conn, cursor, patient_id, new_text, method="replace"):#handles the merge, add, replace operations finally in DB.
     cursor.execute("SELECT report_summary FROM sparrc_patient_info WHERE id = %s", (patient_id,))
@@ -414,17 +426,17 @@ if __name__ == "__main__":
     public_url = None
 
     # #comment these below lines if you don't want to use  ngrok
-    tunnel = ngrok.connect(5000)
-    public_url = tunnel.public_url
+    # tunnel = ngrok.connect(5000)
+    # public_url = tunnel.public_url
 
     # print("Tunnel URL:", public_url)# Use this to access the Flask app URL during development
 
     # Fallback if tunnel fails. Falls to Localhost
     if not public_url:
-        public_url = "http://127.0.0.1:5000"
+        public_url = "http://127.0.0.1:5001"
 
     # Save to .env (This allow us to seperate/chain the development of Fronten and Backend. When chained both backend and frontend RESTARTS in same URL) USE in Deployment
     set_key("./frontend/.env", "VITE_API_URL", public_url)
 
     # Run Flask
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=5001)
