@@ -16,3 +16,4 @@ pycloudflared
 pyngrok
 pdf2image
 tqdm
+huggingface-hub
