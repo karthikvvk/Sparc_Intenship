@@ -368,6 +368,8 @@ def handle_single_summarisation(patient_id, idea="", pdf="", form="true"):# Summ
         # summary = "single two" #use for testing faster without Ai
 
         structured_data = print_structured_summary(summary)
+        # structured_data = summary
+        print("structured_data", structured_data)
         return jsonify({
             "summary": structured_data["formatted_summary"],
             "structured": structured_data["structured"],
@@ -377,6 +379,8 @@ def handle_single_summarisation(patient_id, idea="", pdf="", form="true"):# Summ
 
     
     structured_data = print_structured_summary(summary)
+    # structured_data = summary
+    print("structured_data", structured_data)
     return jsonify({
         "summary": structured_data["formatted_summary"],
         "structured": structured_data["structured"],
@@ -426,8 +430,8 @@ if __name__ == "__main__":
     public_url = None
 
     # #comment these below lines if you don't want to use  ngrok
-    # tunnel = ngrok.connect(5000)
-    # public_url = tunnel.public_url
+    tunnel = ngrok.connect(5000)
+    public_url = tunnel.public_url
 
     # print("Tunnel URL:", public_url)# Use this to access the Flask app URL during development
 

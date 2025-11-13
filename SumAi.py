@@ -5,6 +5,8 @@ from llama_cpp import Llama
 from dotenv import load_dotenv
 from Cleaner import clean_summary_text
 from processor import extract_text_from_url
+from transformers import pipeline
+
 
 # ---------- Load environment variables ----------
 load_dotenv(dotenv_path="./frontend/.env")
@@ -52,13 +54,15 @@ def get_model(model="Intern-S1-mini-Q8_0.gguf"):
 
         print("\n[Loading Intern-S1 using new llama-cpp API]\n")
         try:
-            llm_instance = Llama.from_pretrained(
-                repo_id="internlm/Intern-S1-mini-GGUF",
-                filename="Q8_0/Intern-S1-mini-Q8_0.gguf",
+            llm_instance = Llama(
+                model_path=intern_s1,
                 n_ctx=8192,
-                n_gpu_layers=-1,
-                verbose=True
+                n_threads=os.cpu_count(),
+                n_batch=1024,
+                n_gpu_layers=0,
+                verbose=False
             )
+
         except Exception as e:
             raise RuntimeError(f"Failed to load Intern-S1-mini model: {e}")
 
@@ -142,10 +146,12 @@ def print_structured_summary(summary_text):
     text = re.sub(r"^(Here(?:’|'|)s a summary.*?:|Summary of .*?:)\s*", "", text, flags=re.IGNORECASE)
     text = re.sub(r"\s+", " ", text).strip()
 
+    # Sentence-based segmentation for cleaner formatting
     sentences = re.split(r'(?<=[.!?])\s+', text)
     segmented_text = "\n".join([f"- {s.strip()}" for s in sentences if s.strip()])
     text = segmented_text
 
+    # Keep formatted bullets/headings if they exist
     has_bullets = bool(re.search(r"^\s*[\*\-\•]\s", text, re.MULTILINE))
     has_headings = bool(re.search(r"\*\*.*\*\*", text))
     if has_bullets or has_headings:
@@ -155,47 +161,30 @@ def print_structured_summary(summary_text):
             "structured": None
         }
 
-    name_match = re.search(r"([A-Z][a-z]+\s[A-Z][a-z]+)", text)
-    age_match = re.search(r"(\d{1,2})[- ]?year[- ]?old", text)
-    job_match = re.search(r"(IT professional|engineer|teacher|doctor|student|driver|manager|nurse|worker)", text, re.IGNORECASE)
-    complaint_match = re.search(r"(low back pain|neck pain|shoulder pain|knee pain|disc bulge|sciatica|lumbar|cervical)", text, re.IGNORECASE)
-    mri_match = re.search(r"(MRI|scan).*?(bulge|herniation|degeneration)", text, re.IGNORECASE)
-    treatment_match = re.findall(r"(physiotherapy|painkiller|exercise|treatment|therapy|rest|heat pack)", text, re.IGNORECASE)
-    posture_match = re.search(r"(slouched|poor posture|ergonomic chair)", text, re.IGNORECASE)
-    impact_match = re.search(r"(sleep|productivity|daily activity|mobility|work)", text, re.IGNORECASE)
-
-    structured = {
-        "Patient Information": {
-            "Name": name_match.group(1) if name_match else None,
-            "Age": f"{age_match.group(1)} years" if age_match else None,
-            "Occupation": job_match.group(1).capitalize() if job_match else None,
-        },
-        "Chief Complaint": complaint_match.group(1).capitalize() if complaint_match else "Not specified",
-        "Findings / Diagnosis": mri_match.group(0) if mri_match else "No imaging info detected",
-        "Symptoms": [s.strip().capitalize() for s in re.findall(r"(pain|numbness|stiffness|difficulty|ache|radiating|sharpness)[^.]*\.", text, re.IGNORECASE)] or ["Not clearly stated"],
-        "Treatment History": list(set([t.capitalize() for t in treatment_match])) or ["None reported"],
-        "Posture / Ergonomics": posture_match.group(1).capitalize() if posture_match else "Not mentioned",
-        "Impact on Life": f"Affects {impact_match.group(1)}" if impact_match else "No explicit mention"
-    }
-
+    # Split structured data by simple logical section markers
+    sections = re.split(r"(?:\n|^)(?=[A-Z][a-z]+:)", text)
+    structured = {}
     tag_lines = []
-    for section, value in structured.items():
-        tag_lines.append(f"<heading>{section}</heading>")
-        if isinstance(value, dict):
-            for k, v in value.items():
-                if v:
-                    tag_lines.append(f"<point>{k}: {v}</point>")
-        elif isinstance(value, list):
-            for v in value:
-                tag_lines.append(f"<point>{v}</point>")
-        else:
-            tag_lines.append(f"<point>{value}</point>")
 
+    for sec in sections:
+        if ":" in sec:
+            key, value = sec.split(":", 1)
+            key = key.strip()
+            value = value.strip()
+            structured[key] = value
+            tag_lines.append(f"<heading>{key}</heading>")
+            for line in re.split(r'[•\-\n]+', value):
+                line = line.strip()
+                if line:
+                    tag_lines.append(f"<point>{line}</point>")
+
+    formatted_summary = "\n".join(tag_lines)
     return {
-        "formatted_summary": "\n".join(tag_lines),
-        "structured": structured,
+        "formatted_summary": formatted_summary,
+        "structured": structured if structured else None,
         "segmented_summary": text
     }
+
 
 
 # ============================================================
@@ -250,8 +239,27 @@ def StartSummarize(path="", idea="", data="", form="false", pdf="false"):
             final_summary = "[Error in MedGemma output]"
 
     if final_summary and final_summary.strip() != "":
-        print_structured_summary(final_summary)
+        droped_summary = droper(final_summary)
+        print_structured_summary(droped_summary)
     else:
         print("[Empty Summary]")
 
     return final_summary
+
+
+
+def droper(summary):
+    pipe = pipeline("text-generation", model="TinyLlama/TinyLlama-1.1B-Chat-v0.6")
+    messages = [
+        {"role": "user", "content": f"""
+    You are a droping + cleaner model. so remove any thought process or the reasoning steps from the input and provide only the final structured data output.
+    make sure whole detail is covered.
+    structure output point wise.
+    output should be smaller than the input.
+    so dont include any of your though process and remove any such from the input.
+
+
+    input:{summary}
+    """},
+    ]
+    return pipe(messages)
