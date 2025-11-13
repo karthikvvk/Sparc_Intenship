@@ -433,7 +433,7 @@ if __name__ == "__main__":
     tunnel = ngrok.connect(5000)
     public_url = tunnel.public_url
 
-    # print("Tunnel URL:", public_url)# Use this to access the Flask app URL during development
+    print("Tunnel URL:", public_url)# Use this to access the Flask app URL during development
 
     # Fallback if tunnel fails. Falls to Localhost
     if not public_url:
