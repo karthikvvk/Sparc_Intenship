@@ -33,42 +33,6 @@ const LoadingSpinner = ({ text }: { text: string }) => (
 );
 
 // Helper: parse tag-based summary strings with <heading> and <point> per-line
-const renderTaggedSummary = (summary: string | undefined | null) => {
-  if (!summary) return null;
-  const lines = summary.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-  type Section = { heading: string; points: string[] };
-  const sections: Section[] = [];
-
-  for (const ln of lines) {
-    const hMatch = ln.match(/^<heading>(.*?)<\/heading>$/i);
-    const pMatch = ln.match(/^<point>(.*?)<\/point>$/i);
-    if (hMatch) {
-      sections.push({ heading: hMatch[1].trim(), points: [] });
-    } else if (pMatch) {
-      if (sections.length === 0) sections.push({ heading: 'Details', points: [] });
-      sections[sections.length - 1].points.push(pMatch[1].trim());
-    } else {
-      // fallback: treat as a point
-      if (sections.length === 0) sections.push({ heading: 'Details', points: [] });
-      sections[sections.length - 1].points.push(ln);
-    }
-  }
-
-  return (
-    <div className="space-y-4">
-      {sections.map((sec, idx) => (
-        <div key={idx}>
-          <div className="text-blue-700 font-semibold mb-2">{sec.heading}</div>
-          <ul className="list-disc list-inside text-gray-700">
-            {sec.points.map((pt, i) => (
-              <li key={i} className="leading-relaxed">{pt}</li>
-            ))}
-          </ul>
-        </div>
-      ))}
-    </div>
-  );
-};
 
 
 // ============================================================================
@@ -453,14 +417,57 @@ const ActionPage = ({
         </div>
       </div>
       
-      {summaryData && activeTab === 'summary' && (
+{summaryData && activeTab === 'summary' && (
         <div className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl p-8 border border-white/20 animate-in slide-in-from-bottom duration-700">
             <div className="flex items-center mb-6">
               <Activity className="w-8 h-8 text-blue-600 mr-3" />
               <h2 className="text-2xl font-bold text-gray-800">AI Generated Summary</h2>
             </div>
             <div className="bg-gradient-to-r from-blue-50 to-cyan-50 rounded-xl p-6 border-l-4 border-blue-500">
-              <div className="text-gray-700 leading-relaxed text-lg">{renderTaggedSummary(summaryData.summary)}</div>
+              <iframe
+                srcDoc={`
+                  <!DOCTYPE html>
+                  <html>
+                    <head>
+                      <style>
+                        body {
+                          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+                          margin: 0;
+                          padding: 20px;
+                          color: #374151;
+                          line-height: 1.6;
+                          font-size: 16px;
+                        }
+                        h2 {
+                          font-size: 1.5rem;
+                          font-weight: 700;
+                          color: #1f2937;
+                          margin-bottom: 1rem;
+                          margin-top: 0;
+                        }
+                        ul {
+                          list-style-type: disc;
+                          padding-left: 1.5rem;
+                          margin: 0.5rem 0;
+                        }
+                        li {
+                          margin-bottom: 0.5rem;
+                          line-height: 1.6;
+                        }
+                        p {
+                          margin: 0.5rem 0;
+                        }
+                      </style>
+                    </head>
+                    <body>
+                      ${summaryData.summary}
+                    </body>
+                  </html>
+                `}
+                className="w-full border-0 rounded-lg"
+                style={{ minHeight: '400px', height: 'auto' }}
+                title="Summary Content"
+              />
             </div>
             <div className="flex justify-end space-x-4 mt-6">
               <button onClick={() => updateSummary("replace")} disabled={!areButtonsEnabled} className="px-6 py-3 rounded-lg font-medium transition bg-red-600 text-white hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed">Replace</button>
@@ -518,7 +525,7 @@ const ActionPage = ({
             <motion.div className="bg-white rounded-2xl shadow-xl p-8 w-11/12 max-w-2xl relative max-h-[80vh] overflow-y-auto" initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 50, opacity: 0 }}>
               <button onClick={() => setSelectedSummary(null)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-700 transition"><X size={24}/></button>
               <h3 className="text-2xl font-bold mb-4 text-gray-800">Full Summary</h3>
-              <div className="text-gray-700 whitespace-pre-wrap leading-relaxed">{renderTaggedSummary(selectedSummary.summary)}</div>
+              <div className="text-gray-700 whitespace-pre-wrap leading-relaxed">{selectedSummary.summary}</div>
             </motion.div>
           </motion.div>
         )}

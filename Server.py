@@ -297,6 +297,54 @@ def stop_processing():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/predictor", methods=["GET", "POST"])
+def predictor():
+    client_id = request.remote_addr
+    if active_clients.get(client_id, False):
+        return jsonify({"status": "Already running for this device"}), 429
+    active_clients[client_id] = True
+
+    try:
+        # same input handling as start_summarisation
+        if request.content_type and request.content_type.startswith("multipart/form-data"):
+            pdf_file = request.files.get("pdf")
+            if not pdf_file:
+                return jsonify({"error": "PDF file required"}), 400
+
+            saved = f"{temp_pdf}/{pdf_file.filename}"
+            pdf_file.save(saved)
+
+            out = StartPrediction(path=saved, form="true")
+            return jsonify({"prediction": out})
+
+        # JSON mode (DB fetch mode)
+        data = request.get_json(force=True)
+        patient_id = data.get("patientId")
+        idea = data.get("idea","")
+        pdf_flag = data.get("pdf","false").lower() 
+
+        conn = mysql.connector.connect(**db_config)
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM sparrc_patient_info WHERE id=%s", (patient_id,))
+        row = cursor.fetchone()
+        cursor.close()
+        conn.close()
+
+        if not row:
+            return jsonify({"error": "patient not found"}), 404
+
+        if pdf_flag == "true":
+            pdf_path = row[-2]
+            out = StartPrediction(path=pdf_path, data=row, pdf="true")
+        else:
+            out = StartPrediction(data=row, pdf="false")
+
+        return jsonify({"prediction": out})
+
+    except Exception as e:
+        return jsonify({"error": str(e)})
+    finally:
+        active_clients[client_id] = False
 
 
 # -------------------- HELPERS --------------------
@@ -335,11 +383,11 @@ def handle_bulk_summarisation(): # Summarises all patients who have empty report
 
 def handle_single_summarisation(patient_id, idea="", pdf="", form="true"):# Summary for single patient based on doctor's requirement.
     if form == "true":
-        #direct pdf upload
+
         summary = StartSummarize(path=pdf, idea=idea, form="true")
-        summary = clean_summary_text(summary)
+
     elif pdf == "true":
-        #internlm(handles images) + DB(summarise using pdf path in db)
+
         conn = mysql.connector.connect(**db_config)
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM sparrc_patient_info WHERE id = %s", (patient_id,))
@@ -352,10 +400,11 @@ def handle_single_summarisation(patient_id, idea="", pdf="", form="true"):# Summ
 
         pdf_path = row[-2]
         summary = StartSummarize(path=pdf_path, idea=idea, data=row, pdf='true')
-        summary = clean_summary_text(summary)
+
+
 
     elif pdf == "false":
-        #only medgemma (no image reading and pdf reading from anywhere)
+
         conn = mysql.connector.connect(**db_config)
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM sparrc_patient_info WHERE id = %s", (patient_id,))
@@ -363,27 +412,14 @@ def handle_single_summarisation(patient_id, idea="", pdf="", form="true"):# Summ
         cursor.close()
         conn.close()
         summary = StartSummarize(idea=idea, data=row, pdf="false")
-        summary = clean_summary_text(summary)
-        # summary = "single two" #use for testing faster without Ai
-
-        structured_data = print_structured_summary(summary)
-        # structured_data = summary
-        print("structured_data", structured_data)
-        return jsonify({
-            "summary": structured_data["formatted_summary"],
-            "structured": structured_data["structured"],
-            "idea": idea
-        })
 
 
-    
-    structured_data = print_structured_summary(summary)
-    # structured_data = summary
-    print("structured_data", structured_data)
+
+
+    print("FINAL SUMMARY:", summary.get("formatted_summary"),type(summary))
     return jsonify({
-        "summary": structured_data["formatted_summary"],
-        "structured": structured_data["structured"],
-        "idea": idea
+    "summary": summary.get("formatted_summary"),
+    "idea": idea or None
     })
 
 def update_summary_in_db(conn, cursor, patient_id, new_text, method="replace"):#handles the merge, add, replace operations finally in DB.

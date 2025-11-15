@@ -51,19 +51,19 @@ def extract_text_from_url(pdf_path, output_dir="./extracted", dpi=300, lang="eng
                 img.save(full_img_path)
                 all_images.append(full_img_path)
 
-            # #Extract additional embedded images (optional)
-            # for img_index, img_meta in enumerate(page.get_images(full=True)):
-            #     xref = img_meta[0]
-            #     pix = fitz.Pixmap(doc, xref)
-            #     img_file = os.path.join(img_dir, f"page_{page_num}_img_{img_index+1}.png")
+            #Extract additional embedded images (optional)
+            for img_index, img_meta in enumerate(page.get_images(full=True)):
+                xref = img_meta[0]
+                pix = fitz.Pixmap(doc, xref)
+                img_file = os.path.join(img_dir, f"page_{page_num}_img_{img_index+1}.png")
 
-            #     if pix.n < 5:  # GRAY/RGB
-            #         pix.save(img_file)
-            #     else:  # CMYK -> convert
-            #         pix = fitz.Pixmap(fitz.csRGB, pix)
-            #         pix.save(img_file)
+                if pix.n < 5:  # GRAY/RGB
+                    pix.save(img_file)
+                else:  # CMYK -> convert
+                    pix = fitz.Pixmap(fitz.csRGB, pix)
+                    pix.save(img_file)
 
-            #     all_images.append(img_file)
+                all_images.append(img_file)
 
     text = "\n".join(page_texts)
     # print([all_images, text])
@@ -71,16 +71,15 @@ def extract_text_from_url(pdf_path, output_dir="./extracted", dpi=300, lang="eng
 
 
 def droper(summary):
-    pipe = pipeline("text-generation", model="TinyLlama/TinyLlama-1.1B-Chat-v0.6")
+    pipe = pipeline("text-generation", model="Qwen/Qwen2.5-1.5B-Instruct")
     messages = [
         {"role": "user", "content": f"""
-    You are a droping + cleaner model. so remove any thought process or the reasoning steps from the input and provide only the final structured data output.
-    make sure whole detail is covered.
-    structure output point wise.
-    output should be smaller than the input.
-    so dont include any of your though process and remove any such from the input.
-
-
+    Perform Droping and Cleaning operation on Input.
+    Do not include the given input in the response.
+    Domain is medical related.
+    Very small summary for Fast reading by doctors.
+    Include domain info while reject any other AI thinking, thought process.
+    Dont repeat outputs.
     input:{summary}
     """},
     ]
@@ -188,14 +187,6 @@ def print_structured_summary(summary_text):
 
 
 def clean_summary_text(raw_text: str) -> str:
-    """
-    Cleans extracted text for medical summarization:
-    - Removes AI meta tags (<|...|>, assistant, final, etc.)
-    - Normalizes spaces, newlines, punctuation
-    - Strips markdown, HTML tags, quotes
-    - Preserves medically relevant text only
-    - Returns a single clean paragraph
-    """
     if not raw_text:
         return ""
 
