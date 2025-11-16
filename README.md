@@ -1,15 +1,19 @@
-# Sparc Internship Project This Branch only contains work by me.
-This is a Python and MySQL-based summarization Ai mainly developed for Medical Use.
-Uses MedGemmaQ4KM local model fro summarisation.
+# Sparc Internship Project **This Branch only contains work by me.**
 
-# Warning
- The Ai may be less accurete. Please Re-Verify the Output with actual Doctor.
+# Warning 
+The Ai may be less accurete. Please Re-Verify the Output with actual Doctor.
 
 
 # Prerequisites
-- Python 3.8 or higher  
-- pip (Python package installer)  
-- MySQL Server  
+- **Python 3.8 or higher**
+- **MySQL Server**
+- **CPU core >=2**
+- **GPU >= 20GB**
+
+# Models Used
+- InternLM-S1-Mini
+- Medgemma
+- Qwen-5b-it
 
 
 # Installation
@@ -30,6 +34,8 @@ cd Sparc_Intenship
 git checkout <BranchName_u_want>
 ```
 ---
+
+
 ### 2. Create Virtual Environment
 #### On Linux / macOS
 ```bash
@@ -42,18 +48,36 @@ python -m venv venv
 .venv\Scripts\activate
 ```
 ---
-### 3. Install Dependencies
+
+### 3. HF Login (Copy-Paste in CLI)
+```
+pip install huggingface_hub
+python
+from huggingface_hub import login
+login(new_session=False)
+exit()
+```
+
+
+### 4. Install Dependencies
 ```bash
-pip install -r requirements.txt
+pip install -r requirements.txtt
 ```
 ---
-### 4. Setting Up Dependencies
-#### This Sets up the dependencies and enviroinment, creates Dirs and files needed. U can use this whenever u need to fresh up the DB/Server/DepndenciesFiles
+### 5. Setting Up Dependencies
+#### **This Sets up the dependencies and enviroinment, creates Dirs and files needed. U can use this whenever u need to fresh up the DB/Server/DepndenciesFiles**
 ```bash
 python Starter.py
 ```
 ---
-### 5. Running Server
+### 6. Run Server
 ```bash
 python Server.py
+```
+
+---
+### 7. Run FrontEnd
+```
+cd frontend
+npm run dev
 ```
