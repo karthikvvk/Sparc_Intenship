@@ -24,7 +24,7 @@ models = {
     "text": None
 }
 
-gpu = "True" if torch.cuda.is_available() else "Fasle"
+gpu = "True" if torch.cuda.is_available() else "False"
 
 
 
