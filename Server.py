@@ -476,6 +476,11 @@ if __name__ == "__main__":
 
     # Save to .env (This allow us to seperate/chain the development of Fronten and Backend. When chained both backend and frontend RESTARTS in same URL) USE in Deployment
     set_key("./frontend/.env", "VITE_API_URL", public_url)
-
+    fh = open("./frontend/bk.json", "w")
+    fh.write(f"\nVITE_API_URL={public_url}\n")
+    fh.close()
+    lis = ["git add .", "git commit -m 'backend url updated'", "git push origin summary"]
+    for i in lis:
+        os.system(i)
     # Run Flask
     app.run(host="0.0.0.0", port=5001)

@@ -211,7 +211,22 @@ const ActionPage = ({
   const [summaryHistory, setSummaryHistory] = useState<SummaryData[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [selectedSummary, setSelectedSummary] = useState<SummaryData | null>(null);
-  const API_URL = import.meta.env.VITE_API_URL;
+  // const API_URL = import.meta.env.VITE_API_URL;
+  const [API_URL, setAPI_URL] = useState("");
+
+  useEffect(() => {
+    async function loadApiUrl() {
+      const res = await fetch("/bk.json");
+      const text = await res.text();
+      const parts = text.trim().split("=");
+
+      if (parts.length === 2) {
+        setAPI_URL(parts[1].trim());
+      }
+    }
+
+    loadApiUrl();
+  }, []);
   const [isMerging, setIsMerging] = useState(false);
   const [historyPatientId, setHistoryPatientId] = useState('');
   const [areButtonsEnabled, setAreButtonsEnabled] = useState(false);
@@ -583,8 +598,22 @@ function App() {
   const [uploadedPdf, setUploadedPdf] = useState<File | null>(null);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false); // State for summary
   const [isGeneratingPrediction, setIsGeneratingPrediction] = useState(false); // State for prediction
-  const API_URL = import.meta.env.VITE_API_URL;
+  // const API_URL = import.meta.env.VITE_API_URL;
+  const [API_URL, setAPI_URL] = useState("");
 
+  useEffect(() => {
+    async function loadApiUrl() {
+      const res = await fetch("/bk.json");
+      const text = await res.text();
+      const parts = text.trim().split("=");
+
+      if (parts.length === 2) {
+        setAPI_URL(parts[1].trim());
+      }
+    }
+
+    loadApiUrl();
+  }, []);
   const handleSearch = async (query: string) => {
     try {
       const response = await fetch(`${API_URL}/searchpatient`, {
