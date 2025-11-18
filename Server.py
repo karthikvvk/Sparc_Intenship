@@ -463,24 +463,24 @@ def update_summary_in_db(conn, cursor, patient_id, new_text, method="replace"):#
 
 if __name__ == "__main__":
     public_url = None
-
+    port = 5000
     # #comment these below lines if you don't want to use  ngrok
-    tunnel = ngrok.connect(5000)
+    tunnel = ngrok.connect(port)
     public_url = tunnel.public_url
 
     print("Tunnel URL:", public_url)# Use this to access the Flask app URL during development
 
     # Fallback if tunnel fails. Falls to Localhost
     if not public_url:
-        public_url = "http://127.0.0.1:5001"
+        public_url = f"http://127.0.0.1:{port}"
 
     # Save to .env (This allow us to seperate/chain the development of Fronten and Backend. When chained both backend and frontend RESTARTS in same URL) USE in Deployment
     set_key("./frontend/.env", "VITE_API_URL", public_url)
-    fh = open("./frontend/bk.json", "w")
-    fh.write(f"\nVITE_API_URL={public_url}\n")
-    fh.close()
-    lis = ["git add .", "git commit -m 'backend url updated'", "git push origin summary"]
-    for i in lis:
-        os.system(i)
+    # fh = open("./frontend/bk.json", "w")
+    # fh.write(f"\nVITE_API_URL={public_url}\n")
+    # fh.close()
+    # lis = ["git add .", "git commit -m 'backend url updated'", "git push origin summary"]
+    # for i in lis:
+    #     os.system(i)
     # Run Flask
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=port, debug=False)
