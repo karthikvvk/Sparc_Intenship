@@ -687,7 +687,7 @@ function App() {
         )}
         
         <div className="text-center mt-12 text-gray-500">
-          <p>© 2025 MediSummary AI</p>
+          <p>© 2025 MediSummary AI{API_URL}</p>
         </div>
       </div>
     </div>
